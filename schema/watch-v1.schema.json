@@ -41,6 +41,117 @@
         "visual_context": { "type": "boolean", "default": false }
       }
     },
+    "localMediaCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "can_play",
+        "can_seek",
+        "can_read_future",
+        "can_export_frames",
+        "can_export_audio",
+        "has_audio",
+        "is_drm"
+      ],
+      "properties": {
+        "can_play": { "type": "boolean" },
+        "can_seek": { "type": "boolean" },
+        "can_read_future": { "type": "boolean" },
+        "can_export_frames": { "type": "boolean" },
+        "can_export_audio": { "type": "boolean" },
+        "has_audio": { "type": "boolean" },
+        "is_drm": { "type": "boolean" }
+      }
+    },
+    "localMedia": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "local_asset_id",
+        "media_revision",
+        "capabilities",
+        "selected_audio",
+        "selected_subtitle"
+      ],
+      "properties": {
+        "local_asset_id": { "type": "string", "minLength": 1 },
+        "media_revision": { "type": "string", "minLength": 1 },
+        "capabilities": { "$ref": "#/$defs/localMediaCapabilities" },
+        "selected_audio": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["track_id", "language", "label"],
+          "properties": {
+            "track_id": { "type": "string" },
+            "language": { "type": "string" },
+            "label": { "type": "string" }
+          }
+        },
+        "selected_subtitle": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "track_id", "language", "label", "format", "offset_ms"],
+          "properties": {
+            "kind": { "enum": ["none", "embedded", "external"] },
+            "track_id": { "type": "string" },
+            "language": { "type": "string" },
+            "label": { "type": "string" },
+            "format": { "enum": ["", "srt", "vtt"] },
+            "offset_ms": { "type": "integer" }
+          }
+        }
+      }
+    },
+    "clientLease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["client_seen_at", "expires_at", "valid"],
+      "properties": {
+        "client_seen_at": { "type": "string" },
+        "expires_at": { "type": "string" },
+        "valid": { "type": "boolean" }
+      }
+    },
+    "clientSamplePlan": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "plan_id",
+        "media_id",
+        "media_revision",
+        "timeline_epoch",
+        "purpose",
+        "managed_by",
+        "target_timestamps_ms",
+        "allowed_start_ms",
+        "allowed_end_ms",
+        "expires_at"
+      ],
+      "properties": {
+        "plan_id": { "type": "string", "minLength": 1 },
+        "media_id": { "type": "string", "minLength": 1 },
+        "media_revision": { "type": "string", "minLength": 1 },
+        "timeline_epoch": { "type": "integer", "minimum": 0 },
+        "purpose": { "enum": ["identify", "timeline_prepass", "rolling"] },
+        "managed_by": { "const": "client" },
+        "target_timestamps_ms": {
+          "type": "array",
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "allowed_start_ms": { "type": "integer", "minimum": 0 },
+        "allowed_end_ms": { "type": "integer", "minimum": 0 },
+        "audio_required": { "type": "boolean" },
+        "accepted_image_mime_types": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "accepted_audio_mime_types": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "expires_at": { "type": "string", "minLength": 1 }
+      }
+    },
     "danmakuToolInput": {
       "type": "object",
       "additionalProperties": false,

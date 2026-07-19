@@ -81,12 +81,49 @@ export function titleFromFileName(name) {
     .trim();
 }
 
-export function localMediaId(file) {
-  const identity = `${file.name}:${file.size}:${file.lastModified}`;
+function fallbackHash(bytes) {
   let hash = 2166136261;
-  for (const character of identity) {
-    hash ^= character.codePointAt(0);
+  for (const value of bytes) {
+    hash ^= value;
     hash = Math.imul(hash, 16777619);
   }
-  return `local:${(hash >>> 0).toString(16)}`;
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+export function createLocalAssetId() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID();
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+export async function computeMediaRevision(file, durationMs) {
+  if (!file || typeof file.slice !== "function") throw new Error("本地文件不可读取");
+  const chunkSize = 64 * 1024;
+  const offsets = [...new Set([
+    0,
+    Math.max(0, Math.floor(Number(file.size || 0) / 2) - Math.floor(chunkSize / 2)),
+    Math.max(0, Number(file.size || 0) - chunkSize),
+  ])];
+  const metadata = new TextEncoder().encode([
+    file.name || "",
+    file.size || 0,
+    file.lastModified || 0,
+    file.type || "",
+    Math.round(Number(durationMs || 0)),
+  ].join("\n"));
+  const chunks = [metadata];
+  for (const offset of offsets) {
+    chunks.push(new Uint8Array(await file.slice(offset, offset + chunkSize).arrayBuffer()));
+  }
+  const length = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+  const material = new Uint8Array(length);
+  let cursor = 0;
+  for (const chunk of chunks) {
+    material.set(chunk, cursor);
+    cursor += chunk.byteLength;
+  }
+  if (globalThis.crypto?.subtle) {
+    const digest = new Uint8Array(await globalThis.crypto.subtle.digest("SHA-256", material));
+    return [...digest].map((value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  return fallbackHash(material);
 }

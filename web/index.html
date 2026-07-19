@@ -38,6 +38,21 @@
                   <strong id="local-file-title">选择本地视频</strong>
                   <span id="local-file-detail">原片留在浏览器内，不会自动上传</span>
                 </label>
+                <input id="local-subtitle-input" class="visually-hidden" type="file" accept=".srt,.vtt,text/vtt,application/x-subrip">
+                <label class="file-picker" for="local-subtitle-input">
+                  <strong id="local-subtitle-title">选择外挂字幕（可选）</strong>
+                  <span id="local-subtitle-detail">支持 SRT / VTT；只上传字幕文本，不上传原片</span>
+                </label>
+                <div class="field-row">
+                  <label class="field">
+                    <span>字幕语言</span>
+                    <input id="local-subtitle-language" value="zh-CN" autocomplete="off">
+                  </label>
+                  <label class="field">
+                    <span>字幕偏移（毫秒）</span>
+                    <input id="local-subtitle-offset" value="0" inputmode="numeric" autocomplete="off">
+                  </label>
+                </div>
               </div>
 
               <label class="field">
@@ -309,6 +324,7 @@
       </button>
     </template>
 
+    <script src="./config.js"></script>
     <script type="module" src="./app.js"></script>
   </body>
 </html>

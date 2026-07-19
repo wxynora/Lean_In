@@ -27,6 +27,7 @@ class SamplePurpose(str, Enum):
 
 
 class SampleManager(str, Enum):
+    GATEWAY = "gateway"
     SERVICE = "service"
     CLIENT = "client"
 
@@ -66,12 +67,83 @@ class ClientCapabilities:
 
 
 @dataclass(frozen=True, slots=True)
+class LocalPlaybackCapabilities:
+    can_play: bool
+    can_seek: bool
+    can_read_future: bool
+    can_export_frames: bool
+    can_export_audio: bool
+    has_audio: bool
+    is_drm: bool
+
+    def __post_init__(self) -> None:
+        for name in (
+            "can_play",
+            "can_seek",
+            "can_read_future",
+            "can_export_frames",
+            "can_export_audio",
+            "has_audio",
+            "is_drm",
+        ):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be a boolean")
+        if not self.can_play:
+            raise ValueError("local media must be playable")
+
+
+@dataclass(frozen=True, slots=True)
+class AudioSelection:
+    track_id: str = ""
+    language: str = ""
+    label: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleSelection:
+    kind: str = "none"
+    track_id: str = ""
+    language: str = ""
+    label: str = ""
+    format: str = ""
+    offset_ms: int = 0
+
+    def __post_init__(self) -> None:
+        if self.kind not in {"none", "embedded", "external"}:
+            raise ValueError("subtitle kind must be none, embedded, or external")
+        if self.kind != "none" and self.format not in {"srt", "vtt"}:
+            raise ValueError("selected subtitles must use srt or vtt")
+        if self.kind == "embedded" and not self.track_id.strip():
+            raise ValueError("embedded subtitles require track_id")
+        if isinstance(self.offset_ms, bool) or not isinstance(self.offset_ms, int):
+            raise ValueError("subtitle offset_ms must be an integer")
+
+
+@dataclass(frozen=True, slots=True)
+class LocalMediaDescriptor:
+    local_asset_id: str
+    media_revision: str
+    capabilities: LocalPlaybackCapabilities
+    selected_audio: AudioSelection = field(default_factory=AudioSelection)
+    selected_subtitle: SubtitleSelection = field(default_factory=SubtitleSelection)
+
+    def __post_init__(self) -> None:
+        _require_text("local_asset_id", self.local_asset_id)
+        _require_text("media_revision", self.media_revision)
+        if self.capabilities.has_audio and not self.selected_audio.track_id.strip():
+            raise ValueError("local media with audio requires a selected audio track")
+
+
+@dataclass(frozen=True, slots=True)
 class MediaDescriptor:
     media_id: str
     source: str
     title: str
     duration_ms: int
     part_title: str = ""
+    content_start_ms: int | None = None
+    content_end_ms: int | None = None
+    local_media: LocalMediaDescriptor | None = None
 
     def __post_init__(self) -> None:
         _require_text("media_id", self.media_id)
@@ -81,6 +153,27 @@ class MediaDescriptor:
             raise ValueError("duration_ms must be an integer")
         if self.duration_ms <= 0:
             raise ValueError("duration_ms must be greater than zero")
+        for name in ("content_start_ms", "content_end_ms"):
+            value = getattr(self, name)
+            if value is not None:
+                _require_non_negative(name, value)
+        if self.content_start_ms is not None and self.content_start_ms >= self.duration_ms:
+            raise ValueError("content_start_ms must be earlier than media duration")
+        if self.content_end_ms is not None and self.content_end_ms > self.duration_ms:
+            raise ValueError("content_end_ms cannot exceed media duration")
+        if (
+            self.content_start_ms is not None
+            and self.content_end_ms is not None
+            and self.content_start_ms >= self.content_end_ms
+        ):
+            raise ValueError("content_start_ms must be earlier than content_end_ms")
+        if self.source == "local_file":
+            if self.local_media is None:
+                raise ValueError("local_file media requires local_media")
+            if self.media_id != f"local:{self.local_media.local_asset_id}":
+                raise ValueError("local media_id must equal local:<local_asset_id>")
+        elif self.local_media is not None:
+            raise ValueError("local_media is only valid for local_file sources")
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +332,11 @@ class SamplePlan:
     end_ms: int
     max_frames: int
     audio_required: bool
+    media_revision: str = ""
+    target_timestamps_ms: tuple[int, ...] = field(default_factory=tuple)
+    expires_at: str = ""
+    accepted_image_mime_types: tuple[str, ...] = field(default_factory=tuple)
+    accepted_audio_mime_types: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         _require_text("plan_id", self.plan_id)
@@ -260,6 +358,27 @@ class SamplePlan:
             raise ValueError("max_frames must be between 0 and 8")
         if not isinstance(self.audio_required, bool):
             raise ValueError("audio_required must be a boolean")
+        object.__setattr__(
+            self,
+            "target_timestamps_ms",
+            tuple(int(value) for value in self.target_timestamps_ms),
+        )
+        for value in self.target_timestamps_ms:
+            if value < self.start_ms or value > self.end_ms:
+                raise ValueError("sample timestamp is outside the allowed range")
+        object.__setattr__(
+            self,
+            "accepted_image_mime_types",
+            tuple(str(value) for value in self.accepted_image_mime_types),
+        )
+        object.__setattr__(
+            self,
+            "accepted_audio_mime_types",
+            tuple(str(value) for value in self.accepted_audio_mime_types),
+        )
+        if self.managed_by == SampleManager.CLIENT:
+            _require_text("media_revision", self.media_revision)
+            _require_text("expires_at", self.expires_at)
 
 
 @dataclass(frozen=True, slots=True)

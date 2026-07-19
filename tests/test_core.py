@@ -3,12 +3,16 @@ from __future__ import annotations
 import unittest
 
 from together_watch import (
+    AudioSelection,
     ClientCapabilities,
     KnowledgeMode,
+    LocalMediaDescriptor,
+    LocalPlaybackCapabilities,
     MediaDescriptor,
     PlaybackSnapshot,
     RiskEvent,
     SessionMode,
+    SubtitleSelection,
     WatchCore,
     WatchCoreError,
 )
@@ -146,6 +150,7 @@ class WatchCoreTest(unittest.TestCase):
 
         self.assertEqual(result, (current,))
 
+
 class ClientCapabilitiesTest(unittest.TestCase):
     def test_client_sampling_requires_local_media(self) -> None:
         with self.assertRaisesRegex(ValueError, "requires local_media"):
@@ -153,6 +158,39 @@ class ClientCapabilitiesTest(unittest.TestCase):
                 playback_snapshot=True,
                 client_sampling=True,
             )
+
+    def test_local_media_requires_revision_and_selected_audio_track(self) -> None:
+        local = LocalMediaDescriptor(
+            local_asset_id="asset-1",
+            media_revision="revision-1",
+            capabilities=LocalPlaybackCapabilities(
+                can_play=True,
+                can_seek=True,
+                can_read_future=True,
+                can_export_frames=True,
+                can_export_audio=False,
+                has_audio=True,
+                is_drm=False,
+            ),
+            selected_audio=AudioSelection(track_id="audio-main", language="ja"),
+            selected_subtitle=SubtitleSelection(
+                kind="external",
+                language="zh-CN",
+                label="movie.srt",
+                format="srt",
+                offset_ms=500,
+            ),
+        )
+
+        descriptor = MediaDescriptor(
+            media_id="local:asset-1",
+            source="local_file",
+            title="Local movie",
+            duration_ms=600_000,
+            local_media=local,
+        )
+
+        self.assertEqual(descriptor.local_media.media_revision, "revision-1")
 
 
 if __name__ == "__main__":

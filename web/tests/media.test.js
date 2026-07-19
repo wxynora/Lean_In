@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  computeMediaRevision,
+  createLocalAssetId,
   formatMediaTime,
-  localMediaId,
   parseBilibiliReference,
   parseBoundaryInput,
   titleFromFileName,
@@ -28,9 +29,19 @@ test("parses media boundaries and formats time", () => {
   assert.equal(formatMediaTime(3_723_000), "1:02:03");
 });
 
-test("local file identity changes with file metadata", () => {
-  const first = { name: "movie.mp4", size: 100, lastModified: 1 };
-  const replacement = { name: "movie.mp4", size: 101, lastModified: 2 };
-  assert.notEqual(localMediaId(first), localMediaId(replacement));
+test("local assets use a random id and a content-sensitive media revision", async () => {
+  const first = Object.assign(new Blob(["first-content"]), {
+    name: "movie.mp4",
+    lastModified: 1,
+  });
+  const replacement = Object.assign(new Blob(["other-content!"]), {
+    name: "movie.mp4",
+    lastModified: 1,
+  });
+  const firstRevision = await computeMediaRevision(first, 10_000);
+  const replacementRevision = await computeMediaRevision(replacement, 10_000);
+
+  assert.notEqual(createLocalAssetId(), createLocalAssetId());
+  assert.notEqual(firstRevision, replacementRevision);
   assert.equal(titleFromFileName(first.name), "movie");
 });

@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "together-watch"
+version = "0.1.0"
+description = "Platform-neutral co-watching context and timeline core for AI companions"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "TogetherWatch contributors" },
+]
+keywords = ["co-watching", "ai-companion", "timeline", "multimodal"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/wxynora/together-watch"
+Issues = "https://github.com/wxynora/together-watch/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

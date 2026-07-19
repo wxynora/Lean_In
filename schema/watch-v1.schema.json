@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/wxynora/together-watch/schema/watch-v1.schema.json",
+  "title": "TogetherWatch Protocol v1",
+  "type": "object",
+  "$defs": {
+    "playbackSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "media_id",
+        "playhead_ms",
+        "duration_ms",
+        "is_playing",
+        "playback_rate",
+        "timeline_epoch",
+        "snapshot_seq",
+        "captured_at"
+      ],
+      "properties": {
+        "media_id": { "type": "string", "minLength": 1 },
+        "playhead_ms": { "type": "integer", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 1 },
+        "is_playing": { "type": "boolean" },
+        "playback_rate": { "type": "number", "minimum": 0.25, "maximum": 4.0 },
+        "timeline_epoch": { "type": "integer", "minimum": 0 },
+        "snapshot_seq": { "type": "integer", "minimum": 1 },
+        "captured_at": { "type": "string", "minLength": 1 }
+      }
+    },
+    "clientCapabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["playback_snapshot"],
+      "properties": {
+        "playback_snapshot": { "type": "boolean" },
+        "local_media": { "type": "boolean", "default": false },
+        "client_sampling": { "type": "boolean", "default": false },
+        "danmaku_overlay": { "type": "boolean", "default": false },
+        "risk_overlay": { "type": "boolean", "default": false },
+        "visual_context": { "type": "boolean", "default": false }
+      }
+    },
+    "danmakuToolInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["target_ms", "text"],
+      "properties": {
+        "target_ms": { "type": "integer", "minimum": 0 },
+        "text": { "type": "string", "minLength": 1, "maxLength": 160 }
+      }
+    }
+  }
+}

@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-CN" data-companion-name="陪伴者">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0d0d0d">
+    <title>TogetherWatch</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <div id="app" class="watch-app">
+      <section id="confirm-page" class="page" aria-labelledby="confirm-title">
+        <header class="top-bar">
+          <button id="confirm-back" class="icon-button" type="button" aria-label="返回" title="返回">←</button>
+          <h1 id="confirm-title">播放确认</h1>
+          <span class="top-bar-spacer" aria-hidden="true"></span>
+        </header>
+
+        <main class="confirm-scroll">
+          <form id="setup-form" class="setup-form" novalidate>
+            <section class="form-section" aria-labelledby="source-label">
+              <p id="source-label" class="section-label">视频来源</p>
+              <div class="segmented-control" role="tablist" aria-label="视频来源">
+                <button id="source-bilibili" class="segment is-selected" type="button" role="tab" aria-selected="true" aria-controls="bilibili-fields" data-source="bilibili">Bilibili</button>
+                <button id="source-local" class="segment" type="button" role="tab" aria-selected="false" aria-controls="local-fields" data-source="local">本地视频</button>
+              </div>
+
+              <div id="bilibili-fields" class="source-fields" role="tabpanel" aria-labelledby="source-bilibili">
+                <label class="field">
+                  <span>Bilibili 分享链接或 BV 号</span>
+                  <input id="bilibili-input" name="bilibili_input" autocomplete="off" inputmode="url">
+                </label>
+              </div>
+
+              <div id="local-fields" class="source-fields" role="tabpanel" aria-labelledby="source-local" hidden>
+                <input id="local-file-input" class="visually-hidden" type="file" accept="video/*">
+                <label class="file-picker" for="local-file-input">
+                  <strong id="local-file-title">选择本地视频</strong>
+                  <span id="local-file-detail">原片留在浏览器内，不会自动上传</span>
+                </label>
+              </div>
+
+              <label class="field">
+                <span>作品名（可补充）</span>
+                <input id="title-input" name="title" autocomplete="off">
+              </label>
+            </section>
+
+            <section id="recent-section" class="form-section" hidden aria-labelledby="recent-label">
+              <p id="recent-label" class="section-label">最近观看</p>
+              <div id="recent-list" class="recent-list"></div>
+            </section>
+
+            <section id="selection-card" class="panel selection-panel" hidden aria-live="polite">
+              <p class="section-label">当前选择</p>
+              <h2 id="selection-title"></h2>
+              <p id="selection-meta" class="secondary-text"></p>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>正片范围（可选）</h2>
+                <p>跳过片源前置垫片，并让片尾后的字幕和剧情时间保持准确。</p>
+              </div>
+              <div class="field-row">
+                <label class="field">
+                  <span>正片开始，如 00:30</span>
+                  <input id="content-start-input" name="content_start" inputmode="numeric" autocomplete="off">
+                </label>
+                <label class="field">
+                  <span>片尾开始，如 42:10</span>
+                  <input id="content-end-input" name="content_end" inputmode="numeric" autocomplete="off">
+                </label>
+              </div>
+              <p class="hint">支持秒、分:秒或时:分:秒；留空就使用完整视频。</p>
+            </section>
+
+            <section class="panel" aria-labelledby="knowledge-heading">
+              <div class="panel-heading">
+                <h2 id="knowledge-heading">开始一起看前，请确认<span data-companion></span>是否了解这部作品</h2>
+                <p>这里必须由你手动选择，系统不会替你试探。</p>
+              </div>
+              <label class="choice-row">
+                <input type="radio" name="knowledge-mode" value="known">
+                <span class="radio-mark" aria-hidden="true"></span>
+                <span>
+                  <strong><span data-companion></span>了解这部作品</strong>
+                  <small>不生成大概摘要，只提供当前定位和附近剧情。</small>
+                </span>
+              </label>
+              <label class="choice-row">
+                <input type="radio" name="knowledge-mode" value="needs_summary">
+                <span class="radio-mark" aria-hidden="true"></span>
+                <span>
+                  <strong><span data-companion></span>不了解或不确定</strong>
+                  <small>启用人物关系与截至当前的剧情摘要。</small>
+                </span>
+              </label>
+              <button id="open-chat-button" class="text-button" type="button">返回聊天确认</button>
+            </section>
+
+            <section class="rule-panel">
+              <span class="info-mark" aria-hidden="true">i</span>
+              <div>
+                <h2>真实互动</h2>
+                <p>不会提前替<span data-companion></span>写台词；开始后，只在真实对话里决定怎么回应、要不要发弹幕。</p>
+              </div>
+            </section>
+
+            <section class="panel settings-panel">
+              <label class="switch-row">
+                <span>
+                  <strong>胆小模式</strong>
+                  <small>高能分析就绪后，按时间戳提前提醒或挡住画面。</small>
+                </span>
+                <input id="fear-mode-input" type="checkbox" role="switch">
+                <span class="switch-track" aria-hidden="true"></span>
+              </label>
+              <div id="fear-action-row" class="option-row" hidden>
+                <button class="option-button is-selected" type="button" data-fear-action="warn_only">仅提醒</button>
+                <button class="option-button" type="button" data-fear-action="cover_video">自动挡住画面</button>
+              </div>
+              <div class="section-divider"></div>
+              <label class="switch-row">
+                <span>
+                  <strong>显示<span data-companion></span>的弹幕</strong>
+                  <small>只控制画面展示，不替他预生成反应。</small>
+                </span>
+                <input id="danmaku-input" type="checkbox" role="switch" checked>
+                <span class="switch-track" aria-hidden="true"></span>
+              </label>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <h2>陪你说话的节奏</h2>
+                <p>按当前播放位置，给<span data-companion></span>留一点组织回复的时间。</p>
+              </div>
+              <div id="reply-lead-options" class="chip-row" aria-label="回复延迟">
+                <button class="choice-chip" type="button" data-delay="0">立即</button>
+                <button class="choice-chip" type="button" data-delay="15000">15 秒</button>
+                <button class="choice-chip is-selected" type="button" data-delay="30000">30 秒</button>
+                <button class="choice-chip" type="button" data-delay="60000">60 秒</button>
+                <button class="choice-chip" type="button" data-delay="90000">90 秒</button>
+                <button class="choice-chip" type="button" data-delay="120000">120 秒</button>
+                <button class="choice-chip" type="button" data-delay="custom">自定义</button>
+              </div>
+              <label id="custom-delay-field" class="field compact-field" hidden>
+                <span>自定义延迟（0–120 秒）</span>
+                <input id="custom-delay-input" inputmode="numeric" pattern="[0-9]*" value="30">
+              </label>
+
+              <div class="section-divider wide"></div>
+              <div class="panel-heading compact-heading"><h2>剧情画面参考</h2></div>
+              <div class="option-row">
+                <button class="option-button" type="button" data-visual-mode="text_only">纯文字</button>
+                <button class="option-button is-selected" type="button" data-visual-mode="text_plus_contact_sheet">文字 + 剧情拼图</button>
+              </div>
+              <p class="hint">拼图来自网关已经分析过的低清画面；不可用时会如实降级为纯文字。</p>
+            </section>
+
+            <div id="setup-error" class="error-panel" role="alert" hidden></div>
+            <button id="start-button" class="primary-button" type="submit" disabled>
+              <span>开始一起看</span>
+              <span class="button-spinner" aria-hidden="true" hidden></span>
+            </button>
+          </form>
+        </main>
+      </section>
+
+      <section id="player-page" class="page" hidden aria-labelledby="player-title">
+        <header class="top-bar player-top-bar">
+          <button id="player-back" class="icon-button" type="button" aria-label="返回播放确认" title="返回播放确认">←</button>
+          <div class="player-heading">
+            <h1 id="player-title">一起看</h1>
+            <span id="sync-badge" class="sync-badge">未同步</span>
+          </div>
+          <details class="more-menu">
+            <summary aria-label="更多操作">更多</summary>
+            <div class="menu-popover">
+              <button id="return-confirm-button" type="button">返回播放确认</button>
+              <button id="end-session-button" type="button">结束本次一起看</button>
+            </div>
+          </details>
+        </header>
+
+        <main class="watch-layout">
+          <section class="media-column" aria-label="视频播放器">
+            <div id="video-stage" class="video-stage">
+              <video id="local-video" controls playsinline preload="metadata" hidden></video>
+              <iframe id="bilibili-player" title="Bilibili 官方播放器" allow="autoplay; fullscreen; picture-in-picture" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen hidden></iframe>
+              <div id="player-placeholder" class="player-placeholder">
+                <span class="placeholder-mark" aria-hidden="true">▶</span>
+                <p>等待视频来源</p>
+              </div>
+              <div id="danmaku-layer" class="danmaku-layer" aria-live="polite"></div>
+              <button id="fullscreen-button" class="stage-icon-button" type="button" aria-label="切换全屏" title="切换全屏">⛶</button>
+              <div id="player-lock" class="player-lock">
+                <span class="lock-mark" aria-hidden="true">▶</span>
+                <p id="player-lock-text">已暂停 · 确认开始后解锁播放</p>
+              </div>
+              <div id="risk-warning" class="risk-warning" role="status" hidden>
+                <span>前方高能</span>
+                <strong id="risk-warning-label">即将出现强烈画面</strong>
+              </div>
+              <div id="risk-cover" class="risk-cover" hidden>
+                <p class="section-label">胆小模式</p>
+                <h2>先替你挡一下</h2>
+                <p id="risk-cover-label">高能片段正在经过</p>
+                <button id="bypass-risk-button" class="secondary-button" type="button">我还是要看</button>
+              </div>
+            </div>
+
+            <nav id="part-navigation" class="part-navigation" hidden aria-label="分 P 导航">
+              <button id="previous-part-button" class="part-button" type="button">上一 P</button>
+              <button id="part-selector-button" class="current-part-button" type="button"></button>
+              <button id="next-part-button" class="part-button" type="button">下一 P</button>
+              <div id="part-list" class="part-list" hidden></div>
+            </nav>
+
+            <section id="playback-status" class="playback-status" hidden aria-live="polite">
+              <div>
+                <span id="analysis-label">剧情分析尚未就绪</span>
+                <strong id="playback-clock">00:00 / 00:00</strong>
+              </div>
+              <p id="playback-notice" hidden></p>
+            </section>
+          </section>
+
+          <section id="preparation-panel" class="side-column preparation-panel" aria-labelledby="preparation-title">
+            <div id="preparation-part-selector" class="inline-part-selector" hidden></div>
+            <div class="preparation-heading">
+              <p class="section-label accent-label">开播前准备</p>
+              <h2 id="preparation-title">正在建立观看会话</h2>
+              <p id="preparation-description">播放器已经加载，但会一直保持暂停。</p>
+            </div>
+            <ol id="preparation-progress" class="preparation-progress" aria-label="准备进度">
+              <li class="is-active"><span></span><small>识别</small></li>
+              <li><span></span><small>搜集</small></li>
+              <li><span></span><small>整理</small></li>
+              <li><span></span><small>字幕</small></li>
+              <li><span></span><small>确认</small></li>
+            </ol>
+            <section id="identified-card" class="panel status-panel" hidden>
+              <p class="section-label accent-label">作品识别完成</p>
+              <p>分析器已经可靠识别这部作品，这次不需要额外生成知识卡。</p>
+            </section>
+            <section id="knowledge-card" class="panel knowledge-card" hidden></section>
+            <section id="subtitle-card" class="panel subtitle-card">
+              <div class="card-title-row">
+                <div>
+                  <p class="section-label accent-label">字幕准备</p>
+                  <h3 id="subtitle-title">等待字幕查找</h3>
+                </div>
+                <span id="subtitle-spinner" class="small-spinner" aria-hidden="true"></span>
+              </div>
+              <p id="subtitle-description">作品识别完成后会自动开始查找。</p>
+              <dl id="subtitle-metadata" hidden></dl>
+              <button id="retry-subtitles-button" class="text-button" type="button" hidden>重新查找字幕</button>
+            </section>
+            <section id="analysis-state-card" class="panel status-panel" hidden>
+              <p id="analysis-state-title" class="section-label accent-label"></p>
+              <p id="analysis-state-description"></p>
+            </section>
+            <section id="visual-state-card" class="panel status-panel" hidden>
+              <p class="section-label">剧情拼图尚未就绪</p>
+              <p id="visual-state-description"></p>
+            </section>
+            <div id="preparation-error" class="error-panel" role="alert" hidden></div>
+            <div class="preparation-actions">
+              <button id="confirm-start-button" class="primary-button" type="button" disabled>确认开始</button>
+              <div class="secondary-actions">
+                <button id="regenerate-button" class="text-button" type="button" hidden>重新搜集</button>
+                <button id="skip-button" class="text-button accent-text" type="button" hidden>跳过准备</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="conversation-panel" class="side-column conversation-panel" hidden aria-label="一起看对话">
+            <div id="conversation-list" class="conversation-list" aria-live="polite">
+              <p id="conversation-empty" class="conversation-empty">还没有新的对话</p>
+            </div>
+            <form id="message-form" class="message-composer">
+              <label class="visually-hidden" for="message-input">和<span data-companion></span>说点什么</label>
+              <input id="message-input" autocomplete="off" placeholder="说点什么..." disabled>
+              <button id="send-button" type="submit" disabled aria-label="发送消息" title="发送消息">↑</button>
+            </form>
+            <p id="message-error" class="composer-error" role="alert" hidden></p>
+          </section>
+        </main>
+      </section>
+
+      <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    </div>
+
+    <template id="message-template">
+      <article class="chat-message">
+        <span class="message-speaker"></span>
+        <p class="message-body"></p>
+      </article>
+    </template>
+    <template id="recent-template">
+      <button class="recent-card" type="button">
+        <span class="recent-poster">
+          <small class="recent-part"></small>
+          <time class="recent-time"></time>
+        </span>
+        <strong class="recent-title"></strong>
+      </button>
+    </template>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

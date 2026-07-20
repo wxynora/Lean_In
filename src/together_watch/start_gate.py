@@ -45,13 +45,14 @@ def evaluate_start_gate(
         )
 
     coverage_ready = bool(analysis_ready and covered_until >= required_until)
+    unprotected_continue = bool(fear_mode and explicit_unprotected)
     should_unlock = bool(
         not playback_unlocked
-        and (not fear_mode or explicit_unprotected or coverage_ready)
+        and (coverage_ready or unprotected_continue)
     )
     effectively_unlocked = playback_unlocked or should_unlock
     if effectively_unlocked:
-        unprotected = bool(explicit_unprotected)
+        unprotected = bool(unprotected_continue)
         return StartGateDecision(
             status="unprotected" if unprotected else "ready",
             reason="explicit_unprotected_continue" if unprotected else "playback_unlocked",
@@ -62,7 +63,7 @@ def evaluate_start_gate(
         )
     return StartGateDecision(
         status="buffering",
-        reason="initial_fear_coverage_pending",
+        reason="initial_analysis_coverage_pending",
         can_play=False,
         should_persist_unlock=False,
         required_until_ms=required_until,

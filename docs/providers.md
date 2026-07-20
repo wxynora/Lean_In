@@ -74,6 +74,11 @@ own model SDK. TogetherWatch does not require importing this package in the prod
 
 These steps describe data flow, not required endpoints, tables, queues, or UI components.
 
+Rolling calls must treat `story_so_far.summary` and `story_state.events` as compact rewritten state,
+not append-only history. Keep active goals, unresolved matters, and causal nodes still needed for the
+current plot; merge resolved older process into concise background. This prevents cumulative prompts
+and responses from growing with every batch while preserving continuity.
+
 ## Model Transport
 
 `StructuredModelProvider` is the low-level model boundary. A host can map a `PromptBundle` to:

@@ -109,13 +109,14 @@ create session + lease
     +--> identify work / build optional background card
     +--> locate optional subtitles
     +--> request server or client sample material
-    +--> prepare initial risk window when fear mode is enabled
+    +--> prepare the initial plot window
+    +--> prepare risk coverage when fear mode is enabled
     |
     v
 user reviews preparation
     |
-    +--> wait for minimum fear coverage
-    +--> explicitly continue without protection
+    +--> wait for minimum initial plot coverage
+    +--> explicitly continue without protection in fear mode only
     |
     v
 unlock playback
@@ -215,9 +216,10 @@ The user selects knowledge handling before playback:
 The choice begins at analysis input construction, not only at final chat injection. A `known` session
 must not silently receive the broad card through another field.
 
-Fear mode adds a second gate. Playback stays locked until the initial analyzed protection range is
-ready, or the user explicitly chooses to continue without protection. Pending, degraded, and failed
-analysis never count as protection.
+Every mode uses an initial plot-coverage gate. Playback stays locked until analysis reaches the
+required range; hosts should default to five media minutes and clamp at the actual content end. Fear
+mode adds real risk protection and may offer an explicit continue-without-protection action. Ordinary
+mode has no bypass. Pending, degraded, and failed analysis never count as plot readiness or protection.
 
 ## Context Boundaries
 
@@ -258,7 +260,7 @@ actions. Scheduling follows media time, so pause does not consume the remaining 
 | Frames work but audio export does not | Frame/subtitle analysis only, explicitly marked degraded. |
 | Subtitle provider is absent or no match exists | Continue with available audio/frames; show subtitle status. |
 | Knowledge provider fails in summary mode | Show failure and allow explicit skip/retry according to host policy. |
-| Initial fear coverage is pending | Keep playback locked or require explicit unprotected continuation. |
+| Initial plot coverage is pending | Keep playback locked; only fear mode may offer explicit unprotected continuation. |
 | Client disappears | Lease expiry ends the session and stops new work. |
 | Seek occurs during a provider call | Reject the old result at the post-call/commit guard. |
 | DELETE races with a running job | Mark cancellation requested; post-call guard prevents commit. |

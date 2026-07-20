@@ -209,7 +209,7 @@ Change it with `watchApiBasePath` in `web/config.js`.
 | `GET` | `/sessions/{id}/status` | Read preparation, playback, analysis, sample plan, risks, and start gate. |
 | `POST` | `/sessions/{id}/heartbeat` | Renew the independent client lease. |
 | `PUT` | `/sessions/{id}/playback` | Apply an authoritative player snapshot. |
-| `POST` | `/sessions/{id}/start` | Confirm/skip preparation and apply the initial protection gate. |
+| `POST` | `/sessions/{id}/start` | Confirm/skip preparation and enter the initial plot-coverage gate. |
 | `PUT` | `/sessions/{id}/mode` | Update supported runtime mode fields. |
 | `POST` | `/sessions/{id}/knowledge-card/regenerate` | Rebuild a pre-play background card. |
 | `POST` | `/sessions/{id}/subtitles/retry` | Retry a configured network subtitle provider. |
@@ -318,16 +318,20 @@ The user explicitly chooses whether the companion already knows the work:
 - `needs_summary`: prepare a visible card, let the user inspect it, and require confirmation or an
   explicit skip before playback.
 
-If fear mode is enabled, confirmation does not automatically imply that playback is protected. The
-start gate may return:
+Confirmation starts preparation but does not immediately unlock playback. Every mode waits for an
+initial analyzed plot buffer; hosts should use a five-minute (`300000` ms) default and clamp the
+requirement to the actual content end. The start gate may return:
 
-- `buffering`: wait for an initial analyzed risk window;
-- `unprotected`: the user explicitly chose to continue without protection;
+- `buffering`: wait for the initial analyzed plot range;
+- `unprotected`: in fear mode only, the user explicitly chose to continue without protection;
 - `ready`: playback may begin.
 
 When an analysis result first reaches the required initial coverage, the host persists the playback
 unlock in the same transaction as that result. The client learns `can_play=true` from status polling;
 it does not need to call start a second time. A later rolling job cannot relock an unlocked session.
+
+Fear mode uses the same initial plot gate and additionally requires real risk coverage. Only fear
+mode may expose the explicit unprotected continuation action; ordinary mode has no bypass.
 
 A client must never label `pending`, `degraded`, or `failed` analysis as protected.
 
@@ -349,7 +353,8 @@ Recommended analysis input for a rolling batch:
 The analysis result should contain objective plot chunks, dialogue attribution, visual details,
 rolling story state, timeline sections, and deterministic risk windows. Subtitles assist
 understanding; actual image and audio evidence wins when subtitles are misaligned or belong to a
-different edit.
+different edit. Cumulative summaries and event state are compact rewrites rather than append-only
+logs, so resolved old process does not expand every later rolling response.
 
 Requesting schema-constrained output is recommended, but the receiver must not assume every provider
 returns one bare JSON string. `parse_openai_compatible_response()` accepts structured message fields,

@@ -150,14 +150,16 @@ The page polls `GET /sessions/{id}/status` and renders the server response direc
 - subtitle lookup or local subtitle status;
 - analysis degradation;
 - visual-context availability;
-- initial fear-protection coverage;
+- initial plot-coverage progress for every mode and fear-protection coverage when enabled;
 - `sample_plan` for local client sampling.
 
-The confirm button is enabled only when the server returns `preparation.can_confirm`. If fear mode
-is enabled and initial protection is not ready, the player remains locked. The user can wait for
-coverage or choose the explicit “continue without protection” action. Status polling unlocks the
-player as soon as `start_gate.can_play=true`; it does not call `/start` a second time. The client
-never labels pending/degraded/failed analysis as protected.
+The confirm button is enabled only when the server returns `preparation.can_confirm`. After
+confirmation, every mode keeps the player locked until the initial plot range is ready. The Web
+reference displays the actual plot lead relative to the current playhead instead of a vague loading
+label. Fear mode may additionally offer the explicit “continue without protection” action; ordinary
+mode never does. Status polling unlocks the player as soon as `start_gate.can_play=true`; it does not
+call `/start` a second time. The client never labels pending/degraded/failed analysis as ready or
+protected.
 
 ## Chat Events
 

@@ -90,6 +90,8 @@ class PromptBundleTests(unittest.TestCase):
 
         self.assertIn("BACKGROUND MODE: DO NOT PRODUCE", known.system_prompt)
         self.assertIn("BACKGROUND MODE: PRODUCE WHEN SAFE", needed.system_prompt)
+        self.assertIn("ever-growing event log", known.system_prompt)
+        self.assertIn("story_state.events must retain only causally active nodes", known.system_prompt)
         self.assertIn("PURPOSE=rolling", known.user_prompt)
         self.assertEqual(known.response_schema["title"], "TogetherWatch analysis result")
 

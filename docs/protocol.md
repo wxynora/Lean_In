@@ -230,12 +230,12 @@ The response is intentionally additive. The reference Web client reads these are
   },
   "start_gate": {
     "status": "buffering",
-    "reason": "initial_fear_coverage_pending",
+    "reason": "initial_analysis_coverage_pending",
     "can_play": false,
     "can_unlock": false,
-    "can_continue_unprotected": true,
-    "required_until_ms": 180000,
-    "covered_until_ms": 120000
+    "can_continue_unprotected": false,
+    "required_until_ms": 390000,
+    "covered_until_ms": 210000
   },
   "sample_plan": null,
   "upcoming_risks": []
@@ -388,8 +388,9 @@ Normal confirmation:
 ```
 
 Skipping a failed/undesired optional knowledge card uses `knowledge_card_action: "skip"`. After the
-first accepted confirmation, a fear-mode session may still be locked while initial protection is
-prepared. Explicit fear-mode bypass then uses:
+first accepted confirmation, every session remains locked while the initial analyzed plot range is
+prepared. Hosts should default this range to five media minutes (`300000` ms), clamped to the actual
+content end. Explicit fear-mode bypass uses:
 
 ```json
 {
@@ -397,9 +398,9 @@ prepared. Explicit fear-mode bypass then uses:
 }
 ```
 
-The server may respond with a locked/buffering gate until minimum initial risk coverage exists. The
-client either waits or requires the explicit unprotected action. A timeout or analysis failure must
-not be converted silently into protection.
+The server responds with a locked/buffering gate until minimum initial plot coverage exists. Ordinary
+mode always waits. Fear mode may additionally offer the explicit unprotected action; a timeout or
+analysis failure must not be converted silently into plot readiness or protection.
 
 When a committed analysis result reaches `required_until_ms`, the same storage transaction persists
 the playback unlock. Subsequent status responses return `start_gate.status=ready` and

@@ -4,6 +4,11 @@ import {
   createAnalysisCostAccumulator,
   recordAnalysisCost,
 } from "./lib/analysis-cost.js";
+import {
+  analysisCoverageLabel,
+  coverageAheadMs,
+  formatLeadDuration,
+} from "./lib/analysis-coverage.js";
 import { LocalFrameSampler, validateClientSamplePlan } from "./lib/local-sampler.js";
 import {
   computeMediaRevision,
@@ -358,6 +363,11 @@ function modePayload() {
     reply_lead_ms: state.replyLeadMs,
     visual_context_mode: state.visualMode,
   };
+}
+
+function activeFearMode(payload = {}) {
+  const configured = payload.mode?.fear_mode ?? state.session?.mode?.fear_mode;
+  return configured === undefined ? $("#fear-mode-input").checked : Boolean(configured);
 }
 
 function clearRuntimeTimers() {
@@ -759,6 +769,7 @@ function renderLocalSampling(payload) {
 function renderStartGate(preparation, payload) {
   const gate = payload.start_gate || {};
   const protection = payload.fear_protection || {};
+  const fearMode = activeFearMode(payload);
   const hasStarted = Boolean(preparation.started_at) || preparation.status === "confirmed";
   const active = hasStarted && !gate.can_play;
   const card = $("#start-gate-card");
@@ -766,13 +777,20 @@ function renderStartGate(preparation, payload) {
   if (!active) return false;
 
   $("#start-gate-description").textContent = {
-    local_sampling_unavailable: "这个本地文件无法可靠独立取材，胆小模式不能假装已经准备好。",
-  }[gate.reason] || "正在等待首段剧情分析覆盖到开播所需范围。";
+    local_sampling_unavailable: fearMode
+      ? "这个本地文件无法可靠独立取材，剧情分析和胆小模式不能假装已经准备好。"
+      : "这个本地文件无法可靠独立取材，剧情分析不能假装已经准备好。",
+  }[gate.reason] || (fearMode
+    ? "正在等待首段剧情与高能保护达到开播所需的五分钟。"
+    : "正在等待首段剧情分析达到开播所需的五分钟。");
   const coverage = $("#start-gate-coverage");
+  const playheadMs = Number(payload.playback?.playhead_ms ?? currentPlayheadMs());
+  const preparedAheadMs = coverageAheadMs(gate.covered_until_ms, playheadMs);
+  const requiredAheadMs = coverageAheadMs(gate.required_until_ms, playheadMs);
   coverage.hidden = !(Number(gate.required_until_ms) > 0);
   coverage.textContent = coverage.hidden
     ? ""
-    : `已覆盖 ${formatMediaTime(gate.covered_until_ms)} · 需要到 ${formatMediaTime(gate.required_until_ms)}`;
+    : `已提前解析 ${formatLeadDuration(preparedAheadMs)}剧情 · 需要 ${formatLeadDuration(requiredAheadMs)}`;
   const protectionState = $("#start-gate-protection");
   protectionState.hidden = protection.status !== "coverage_low";
   protectionState.textContent = protectionState.hidden ? "" : "当前真实状态：保护覆盖不足";
@@ -798,9 +816,12 @@ function renderPreparation(payload) {
   renderSubtitle(preparation);
   renderLocalSampling(payload);
   const gate = payload.start_gate || {};
+  const fearMode = activeFearMode(payload);
   const hasStarted = Boolean(preparation.started_at) || status === "confirmed";
   $("#preparation-title").textContent = hasStarted && !gate.can_play
-    ? "正在准备首段胆小模式保护"
+    ? fearMode
+      ? "正在准备首段剧情与高能保护"
+      : "正在准备首段剧情"
     : {
         identifying: "正在识别作品",
         collecting_sources: "正在搜集资料",
@@ -810,7 +831,9 @@ function renderPreparation(payload) {
         knowledge_failed: "这次资料没准备好",
       }[status] || "正在准备一起看";
   $("#preparation-description").textContent = hasStarted && !gate.can_play
-    ? "播放器仍保持暂停。你可以继续等待，也可以明确选择无保护继续。"
+    ? fearMode
+      ? "播放器仍保持暂停。首段五分钟剧情与高能保护准备好后会自动开始，也可以明确选择无保护继续。"
+      : "播放器仍保持暂停。首段五分钟剧情准备好后会自动开始。"
     : {
         identifying: "先核对作品、版本和分 P，避免认错片。",
         collecting_sources: "正在从公开来源核对人物、背景和剧情资料。",
@@ -906,11 +929,12 @@ async function pollStatus() {
 
 function renderWatchingStatus(payload) {
   const analysis = payload.analysis || {};
-  $("#analysis-label").textContent = analysis.status === "ready"
-    ? "剧情已同步"
-    : analysis.status === "failed"
-      ? "剧情分析不可用"
-      : "正在追上当前剧情";
+  const playheadMs = Number(payload.playback?.playhead_ms ?? currentPlayheadMs());
+  $("#analysis-label").textContent = analysisCoverageLabel(
+    analysis.status,
+    analysis.covered_until_ms,
+    playheadMs,
+  );
   const notice = $("#playback-notice");
   const protection = payload.fear_protection || {};
   if (state.unlocked && protection.status === "protected") {

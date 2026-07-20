@@ -29,5 +29,10 @@
     "options": {
       "max_results": 3
     }
+  },
+  "subtitle_lookup": {
+    "request_timeout_seconds": 15,
+    "lookup_timeout_seconds": 45,
+    "automatic_attempts": 1
   }
 }

@@ -188,3 +188,10 @@ Subtitle lookup remains an independent `SubtitleProvider`. A host may use a loca
 SubDL, OpenSubtitles, ChineseSubFinder, or another provider. Normalize all results to timed cues and
 bind them to media revision, edition, selected track, language, and signed offset. A missing provider
 or no result is an explicit state, not a reason to fabricate subtitle evidence.
+
+Network subtitle lookup should use its own short policy instead of inheriting long media-acquisition
+timeouts. `SubtitleLookupPolicy` defaults to a 15-second request timeout, a 45-second total lookup
+budget, and one automatic attempt. `deduplicate_subtitle_candidates()` preserves provider order while
+removing repeated download URLs; it does not impose a hidden candidate-count limit. After a terminal
+failure, let the preparation UI offer an explicit retry. Log search/download stage durations and
+status, but never subtitle bodies, cookies, or credentials.

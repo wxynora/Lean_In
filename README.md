@@ -386,6 +386,11 @@ Subtitle lookup is also optional. Supported adapter choices include:
 No provider should be configured as an implicit requirement. Use an explicit `not_configured` or
 `not_found` state and continue with audio plus frames when possible.
 
+For network providers, keep subtitle waits independent from long media-extraction timeouts. The
+included `SubtitleLookupPolicy` defaults to 15 seconds per request, 45 seconds for one lookup, and
+one automatic attempt; the UI can expose an explicit retry after failure. Candidate download URLs
+can be deduplicated without silently limiting how many unique candidates the host may try.
+
 ## Session-Only Recall
 
 The included BM25 recall implementation is deliberately limited:

@@ -130,11 +130,13 @@ def build_companion_context_prompt(
         scheduled_future_section = "\n".join(
             [
                 "【定时观看反应】",
+                f"预计当前可见回复抵达时，视频约播放到 {_media_clock(envelope.reply_arrival_until_ms)}。",
                 "下面是晚于当前可见回复范围、只可用于定时弹幕的剧情：",
                 scheduled_future_chunks,
                 "这些内容不能写进当前可见回复，也不能暗示给观看者。",
                 f"如果想发送弹幕，在回复末尾追加一行隐藏标记：[{marker} 媒体时间 弹幕内容]。",
-                f"媒体时间必须落在上面提供的片段内，例如：[{marker} {example_time} 弹幕内容]。没有想发的就不要写。",
+                "媒体时间是希望弹幕实际出现在画面上的时间，不是观看者发消息或你写回复时的时间。",
+                f"优先选择不早于 {_media_clock(envelope.reply_arrival_until_ms)}、且落在上面可靠剧情片段内的时间；片段允许时再留 5 到 10 秒抵达余量。例如：[{marker} {example_time} 弹幕内容]。没有想发的就不要写。",
             ]
         )
 

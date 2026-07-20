@@ -81,6 +81,11 @@ from .provider_response import (
     parse_openai_compatible_response,
 )
 from .start_gate import StartGateDecision, evaluate_start_gate
+from .subtitles import (
+    SubtitleLookupDeadlineExceeded,
+    SubtitleLookupPolicy,
+    deduplicate_subtitle_candidates,
+)
 from .timeline import (
     MAX_FUTURE_WINDOW_MS,
     TimelineTracker,
@@ -134,6 +139,8 @@ __all__ = [
     "StructuredResponseError",
     "SubtitleSelection",
     "SubtitleProvider",
+    "SubtitleLookupDeadlineExceeded",
+    "SubtitleLookupPolicy",
     "TimelineTracker",
     "VisualContextMode",
     "WatchCore",
@@ -148,6 +155,7 @@ __all__ = [
     "build_knowledge_prompt",
     "build_knowledge_search_query",
     "create_danmaku_action",
+    "deduplicate_subtitle_candidates",
     "evaluate_start_gate",
     "extract_structured_object",
     "merge_analysis_usage",

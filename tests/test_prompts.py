@@ -41,10 +41,13 @@ class PromptBundleTests(unittest.TestCase):
         )
 
         self.assertIn("你是{assistant}，正在和{viewer}一起看{work}", prompt)
+        self.assertIn("不要和{viewer}照搬复述你看到的剧情内容", prompt)
         self.assertIn("剧情背景：", prompt)
         self.assertIn("当前剧情：", prompt)
         self.assertIn("与{viewer}说的相关的剧情：", prompt)
         self.assertIn("当前可见回复最多只能参考到 02:00", prompt)
+        self.assertIn("预计当前可见回复抵达时，视频约播放到 02:00", prompt)
+        self.assertIn("媒体时间是希望弹幕实际出现在画面上的时间", prompt)
         self.assertIn("这些内容不能写进当前可见回复", prompt)
         self.assertIn("[watch:danmaku 02:25 弹幕内容]", prompt)
         self.assertEqual(COMPANION_VISUAL_USER_LABEL, "【剧情画面】")

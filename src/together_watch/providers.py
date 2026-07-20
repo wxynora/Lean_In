@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Mapping
 
+from .subtitles import SubtitleLookupPolicy
+
 
 class KnowledgeSearchMode(str, Enum):
     EXTERNAL = "external"
@@ -57,20 +59,25 @@ class ProviderSettings:
     analysis_model: ModelProviderConfig
     knowledge_model: ModelProviderConfig
     knowledge_search: KnowledgeSearchConfig = field(default_factory=KnowledgeSearchConfig)
+    subtitle_lookup: SubtitleLookupPolicy = field(default_factory=SubtitleLookupPolicy)
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> ProviderSettings:
         analysis = value.get("analysis_model")
         knowledge = value.get("knowledge_model")
         search = value.get("knowledge_search", {})
+        subtitle_lookup = value.get("subtitle_lookup", {})
         if not isinstance(analysis, Mapping) or not isinstance(knowledge, Mapping):
             raise ValueError("analysis_model and knowledge_model must be objects")
         if not isinstance(search, Mapping):
             raise ValueError("knowledge_search must be an object")
+        if not isinstance(subtitle_lookup, Mapping):
+            raise ValueError("subtitle_lookup must be an object")
         return cls(
             analysis_model=ModelProviderConfig(**dict(analysis)),
             knowledge_model=ModelProviderConfig(**dict(knowledge)),
             knowledge_search=KnowledgeSearchConfig(**dict(search)),
+            subtitle_lookup=SubtitleLookupPolicy(**dict(subtitle_lookup)),
         )
 
 

@@ -1461,13 +1461,13 @@ label.file-picker:focus-within {
   max-width: 86%;
   margin: 0;
   color: var(--watch-primary);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.55;
   overflow-wrap: anywhere;
 }
 
 .chat-message.is-user .message-body {
-  text-align: right;
+  text-align: left;
 }
 
 .message-composer {

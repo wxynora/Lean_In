@@ -191,7 +191,7 @@ def build_analysis_prompt(
         system_prompt=system_prompt,
         user_prompt=user_prompt,
         response_schema=_resource_json("schemas/analysis_result.schema.json"),
-        prompt_id="together-watch-analysis-v1",
+        prompt_id="together-watch-analysis-v2",
     )
 
 

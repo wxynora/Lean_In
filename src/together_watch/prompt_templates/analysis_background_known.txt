@@ -1,3 +1,3 @@
 BACKGROUND MODE: DO NOT PRODUCE
 
-The companion already knows this work. story_so_far.background must always be an empty string. Do not preserve, rewrite, or extend a previous non-empty background. Continue maintaining story_so_far.summary and story_state for analysis continuity.
+The companion already knows this work. story_background.background must be an empty string and story_background.characters must be an empty array. Do not generate visible background context.

@@ -14,7 +14,7 @@ The installed Python package includes these canonical resources:
 | `prompt_templates/analysis_background_known.txt` | Requires an empty visible background for a known work. |
 | `prompt_templates/analysis_background_needed.txt` | Permits only background established by the watched boundary. |
 | `prompt_templates/analysis_user.txt` | Adds the task purpose and host-built input context. |
-| `schemas/analysis_result.schema.json` | Strict plot, story-state, timeline, and risk output. |
+| `schemas/analysis_result.schema.json` | Strict plot, optional current-batch background, timeline, and risk output. |
 | `prompt_templates/knowledge_system.txt` | Spoiler-controlled pre-play knowledge-card rules. |
 | `prompt_templates/knowledge_user.txt` | Adds target identity and host-supplied search sources. |
 | `schemas/knowledge_card.schema.json` | Strict identity, setting, character, term, source, and limitation output. |
@@ -32,8 +32,7 @@ analysis = build_analysis_prompt(
     context={
         "media": {"id": "movie:1", "duration_ms": 7_200_000},
         "range": {"start_ms": 120_000, "end_ms": 260_000},
-        "previous_story_so_far": {},
-        "previous_story_state": {},
+        "previous_adjacent_plot_chunks": [],
         "samples": [],
     },
 )
@@ -67,17 +66,17 @@ own model SDK. Lean In does not require importing this package in the production
 2. If a visible knowledge card is needed, run the configured external or model-native search.
 3. Pass only the selected target and returned source rows to `build_knowledge_prompt`, then show the
    structured card to the viewer for confirmation.
-4. For each authorized media range, pass audio, frames, subtitle cues, prior confirmed story state,
-   and the optional confirmed card to `build_analysis_prompt`.
+4. For each authorized media range, pass audio, frames, subtitle cues, plot chunks from the immediately
+   preceding analysis window, and the optional confirmed card to `build_analysis_prompt`.
 5. Store the returned plot and risk records in the host's own persistence layer and expose them
    through the host's own frontend/backend contract.
 
 These steps describe data flow, not required endpoints, tables, queues, or UI components.
 
-Rolling calls must treat `story_so_far.summary` and `story_state.events` as compact rewritten state,
-not append-only history. Keep active goals, unresolved matters, and causal nodes still needed for the
-current plot; merge resolved older process into concise background. This prevents cumulative prompts
-and responses from growing with every batch while preserving continuity.
+Rolling calls do not maintain a cumulative plot summary or event state. Persist `plot_chunks` by media
+time and provide only chunks from the immediately preceding analysis window as
+`previous_adjacent_plot_chunks`. This bridges speaker and scene boundaries without making every model
+response rewrite the full watched history.
 
 ## Model Transport
 
@@ -86,6 +85,10 @@ and responses from growing with every batch while preserving continuity.
 - Gemini native `system_instruction`, multimodal `contents`, JSON response MIME, and response schema;
 - an OpenAI-compatible messages endpoint with image/audio parts and structured JSON output;
 - another multimodal model that can honor the same evidence boundary and schema.
+
+The analysis prompt bundle does not define `max_tokens`, `max_output_tokens`, or another explicit
+output ceiling. A host adapter should forward the schema and evidence without adding an implicit
+generation cap.
 
 The core does not inject viewer names, companion names, relationship prompts, chat archives, local
 paths, cookies, or credentials. Product-specific visible chat context belongs in
@@ -132,8 +135,14 @@ The host builds `context` from the current job and confirmed state. Recommended 
   "range": { "start_ms": 120000, "end_ms": 260000 },
   "previous_familiarity": "partial",
   "previous_identity": "",
-  "previous_story_so_far": {},
-  "previous_story_state": {},
+  "previous_adjacent_plot_chunks": [
+    {
+      "start_ms": 0,
+      "end_ms": 120000,
+      "description": "The immediately preceding confirmed plot event.",
+      "characters": []
+    }
+  ],
   "work_knowledge_card": null,
   "samples": [
     { "at_ms": 140000, "kind": "image", "subtitle": "" },

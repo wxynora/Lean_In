@@ -8,8 +8,7 @@
     "canonical_identity",
     "timeline_sections",
     "plot_chunks",
-    "story_so_far",
-    "story_state",
+    "story_background",
     "risk_events",
     "analysis_notes"
   ],
@@ -84,27 +83,14 @@
         }
       }
     },
-    "story_so_far": {
+    "story_background": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["through_ms", "summary", "background", "characters", "unresolved"],
+      "required": ["through_ms", "background", "characters"],
       "properties": {
         "through_ms": { "type": "integer", "minimum": 0 },
-        "summary": { "type": "string" },
         "background": { "type": "string" },
-        "characters": { "type": "array", "items": { "type": "string" } },
-        "unresolved": { "type": "array", "items": { "type": "string" } }
-      }
-    },
-    "story_state": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["characters", "locations", "events", "unresolved"],
-      "properties": {
-        "characters": { "type": "array", "items": { "type": "string" } },
-        "locations": { "type": "array", "items": { "type": "string" } },
-        "events": { "type": "array", "items": { "type": "string" } },
-        "unresolved": { "type": "array", "items": { "type": "string" } }
+        "characters": { "type": "array", "items": { "type": "string" } }
       }
     },
     "risk_events": {

@@ -78,7 +78,14 @@ class PromptBundleTests(unittest.TestCase):
     def test_analysis_modes_change_only_background_contract(self) -> None:
         context = {
             "media": {"id": "movie:1", "duration_ms": 100_000},
-            "previous_story_so_far": {"background": "old"},
+            "previous_adjacent_plot_chunks": [
+                {
+                    "start_ms": 0,
+                    "end_ms": 10_000,
+                    "description": "The previous scene ends at a locked door.",
+                    "characters": [],
+                }
+            ],
         }
         known = build_analysis_prompt(
             purpose="rolling",
@@ -93,10 +100,14 @@ class PromptBundleTests(unittest.TestCase):
 
         self.assertIn("BACKGROUND MODE: DO NOT PRODUCE", known.system_prompt)
         self.assertIn("BACKGROUND MODE: PRODUCE WHEN SAFE", needed.system_prompt)
-        self.assertIn("ever-growing event log", known.system_prompt)
-        self.assertIn("story_state.events must retain only causally active nodes", known.system_prompt)
+        self.assertIn("only to bridge the batch boundary", known.system_prompt)
+        self.assertIn("not persistent analysis state", known.system_prompt)
+        self.assertNotIn("story_so_far", known.response_schema["properties"])
+        self.assertNotIn("story_state", known.response_schema["properties"])
+        self.assertIn("story_background", known.response_schema["properties"])
         self.assertIn("PURPOSE=rolling", known.user_prompt)
         self.assertEqual(known.response_schema["title"], "Lean In analysis result")
+        self.assertEqual(known.prompt_id, "together-watch-analysis-v2")
 
     def test_knowledge_prompt_contains_only_supplied_target_and_sources(self) -> None:
         prompt = build_knowledge_prompt(

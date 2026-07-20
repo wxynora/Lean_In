@@ -12,12 +12,12 @@ from together_watch import (
 
 class ProviderResponseTests(unittest.TestCase):
     def test_accepts_wrappers_blocks_and_structured_message_fields(self) -> None:
-        expected = {"plot_chunks": [{"summary": "A door opens."}], "story_state": {}}
+        expected = {"plot_chunks": [{"summary": "A door opens."}], "story_background": {}}
         raw = json.dumps(expected)
         trailing = raw[:-1] + ",}"
         wrapped = extract_structured_object(
             {"content": f"Example: {{}}\n```json\n{trailing}\n```\nDone."},
-            required_fields={"plot_chunks", "story_state"},
+            required_fields={"plot_chunks", "story_background"},
         )
         blocked = extract_structured_object(
             {

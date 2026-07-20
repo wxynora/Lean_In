@@ -1,4 +1,4 @@
-Analyze this media batch while preserving continuity with the confirmed prior state.
+Analyze this media batch. Use previous_adjacent_plot_chunks only to bridge the immediately preceding batch boundary; current events must come from the attached media evidence.
 
 PURPOSE={{purpose}}
 INPUT_CONTEXT={{context_json}}

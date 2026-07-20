@@ -1,0 +1,6 @@
+Build the pre-play background card for this target work.
+
+TARGET={{target_json}}
+SEARCH_SOURCES={{sources_json}}
+
+Keep story_outline broad and spoiler-controlled. Return only the schema-compliant JSON result.

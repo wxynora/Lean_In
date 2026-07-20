@@ -57,8 +57,9 @@ The Python package owns:
 - client sample-plan contracts;
 - client-lease and worker-cancellation semantics.
 
-It does not own an HTTP framework, database, video player, UI toolkit, chat model, analysis prompt,
-or provider account.
+It does not own an HTTP framework, database, video player, UI toolkit, chat model transport, or
+provider account. It ships replaceable default analysis and knowledge-card prompts so integrations
+share the same evidence and spoiler boundaries without inheriting private product behavior.
 
 ### Host Adapters
 
@@ -69,6 +70,8 @@ or provider account.
 | `SourceSampler` | Optionally sample a network-accessible source on the server side. |
 | `AnalysisProvider` | Convert frames, audio, subtitles, prior rolling state, and optional background into plot and risk records. |
 | `KnowledgeProvider` | Optionally prepare a visible pre-play work-background card. |
+| `KnowledgeSearchProvider` | Search through a host-selected external provider and return source rows. |
+| `StructuredModelProvider` | Send a provider-neutral prompt bundle through Gemini, OpenAI-compatible, or another host transport. |
 | `SubtitleProvider` | Resolve and normalize an optional timed subtitle track. |
 | `PlotRecallAdapter` | Retrieve related chunks from the active session and watched range only. |
 | `ContextHostAdapter` | Convert a context envelope into the host model's request format. |

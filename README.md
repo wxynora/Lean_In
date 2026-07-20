@@ -12,6 +12,8 @@ The repository contains:
 - a functional browser reference client that can connect to a compatible gateway;
 - host adapter interfaces for playback, chat, sampling, analysis, knowledge search, subtitles,
   storage, and action delivery;
+- reusable Gemini-oriented analysis and knowledge-card prompts with strict JSON schemas;
+- explicit model and knowledge-search configuration contracts with no private provider dependency;
 - deterministic Python and JavaScript regression tests.
 
 > **Project status:** alpha. The contracts are usable, but route compatibility may still evolve.
@@ -77,8 +79,9 @@ The portable Python package is not an HTTP server. A production host supplies pe
 provider adapters. The included Web client targets the reference gateway contract documented
 below, but the route prefix and authentication headers are configurable.
 
-Read [Architecture](docs/architecture.md), [Protocol](docs/protocol.md), and
-[Privacy](docs/privacy.md) for the deeper contracts.
+Read [Architecture](docs/architecture.md), [Protocol](docs/protocol.md),
+[Provider and Prompt Integration](docs/providers.md), and [Privacy](docs/privacy.md) for the deeper
+contracts.
 
 ## Quick Start
 
@@ -326,7 +329,9 @@ A client must never label `pending`, `degraded`, or `failed` analysis as protect
 ## Analysis, Knowledge, and Subtitle Providers
 
 TogetherWatch does not require one model vendor. A host can connect any provider that implements
-the adapter contracts.
+the adapter contracts. The package includes default Gemini-oriented prompts, strict analysis and
+knowledge-card schemas, prompt builders, and explicit provider configuration types. See
+[Provider and Prompt Integration](docs/providers.md).
 
 Recommended analysis input for a rolling batch:
 
@@ -346,6 +351,11 @@ API followed by a model, or let its multimodal model build a lightweight card if
 reliable retrieval. The card should identify the work, setting, pre-story, major characters,
 relationships, terminology, and a coarse outline. It is continuity reference, not permission to
 spoiler future scenes.
+
+`KnowledgeSearchConfig` makes that choice explicit: `external`, `model_native`, or `disabled`.
+The query template, title preference, endpoint, API-key environment variable, and provider options
+belong to the integrating host. The included example uses the original title when available and the
+query `《{title}》剧情简介 主要人物 人物关系 世界观`.
 
 Subtitle lookup is also optional. Supported adapter choices include:
 

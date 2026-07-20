@@ -28,6 +28,12 @@ Issues = "https://github.com/wxynora/together-watch/issues"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+together_watch = [
+  "prompt_templates/*.txt",
+  "schemas/*.json",
+]
+
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]

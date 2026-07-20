@@ -5,9 +5,11 @@ from .adapters import (
     ClientSampleExporter,
     ContextHostAdapter,
     KnowledgeProvider,
+    KnowledgeSearchProvider,
     PlaybackAdapter,
     PlotRecallAdapter,
     RuntimeStore,
+    StructuredModelProvider,
     SubtitleProvider,
 )
 from .context import build_context_envelope
@@ -43,6 +45,14 @@ from .models import (
     WatchSession,
 )
 from .recall import Bm25PlotRecall
+from .prompts import PromptBundle, build_analysis_prompt, build_knowledge_prompt
+from .providers import (
+    KnowledgeSearchConfig,
+    KnowledgeSearchMode,
+    ModelProviderConfig,
+    ProviderSettings,
+    build_knowledge_search_query,
+)
 from .timeline import (
     MAX_FUTURE_WINDOW_MS,
     TimelineTracker,
@@ -64,6 +74,9 @@ __all__ = [
     "FearMode",
     "KnowledgeMode",
     "KnowledgeProvider",
+    "KnowledgeSearchConfig",
+    "KnowledgeSearchMode",
+    "KnowledgeSearchProvider",
     "LifecycleError",
     "LocalMediaDescriptor",
     "LocalPlaybackCapabilities",
@@ -73,6 +86,8 @@ __all__ = [
     "PlaybackSnapshot",
     "PlotChunk",
     "PlotRecallAdapter",
+    "PromptBundle",
+    "ProviderSettings",
     "RiskEvent",
     "RuntimeStore",
     "SampleManager",
@@ -81,6 +96,7 @@ __all__ = [
     "SessionMode",
     "SessionRuntime",
     "SnapshotApplyResult",
+    "StructuredModelProvider",
     "SubtitleSelection",
     "SubtitleProvider",
     "TimelineTracker",
@@ -92,11 +108,15 @@ __all__ = [
     "WorkItem",
     "WorkStatus",
     "build_context_envelope",
+    "build_analysis_prompt",
+    "build_knowledge_prompt",
+    "build_knowledge_search_query",
     "create_danmaku_action",
     "reply_arrival_until_ms",
     "scheduled_future_until_ms",
     "stable_action_id",
     "validate_danmaku_action",
+    "ModelProviderConfig",
 ]
 
 __version__ = "0.1.0"

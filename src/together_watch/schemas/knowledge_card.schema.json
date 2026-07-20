@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TogetherWatch knowledge card",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "canonical_identity",
+    "setting",
+    "characters",
+    "terminology",
+    "pre_story",
+    "story_outline",
+    "source_notes",
+    "limitations",
+    "confidence"
+  ],
+  "properties": {
+    "canonical_identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "title",
+        "original_title",
+        "year",
+        "work_type",
+        "season",
+        "episode",
+        "version_notes",
+        "aliases"
+      ],
+      "properties": {
+        "title": { "type": "string" },
+        "original_title": { "type": "string" },
+        "year": { "type": "integer", "minimum": 0 },
+        "work_type": { "enum": ["movie", "series", "other"] },
+        "season": { "type": "string" },
+        "episode": { "type": "string" },
+        "version_notes": { "type": "string" },
+        "aliases": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "setting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["time_period", "locations", "premise"],
+      "properties": {
+        "time_period": { "type": "string" },
+        "locations": { "type": "array", "items": { "type": "string" } },
+        "premise": { "type": "string" }
+      }
+    },
+    "characters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "aliases", "identity", "visual_cues", "relationships"],
+        "properties": {
+          "name": { "type": "string" },
+          "aliases": { "type": "array", "items": { "type": "string" } },
+          "identity": { "type": "string" },
+          "visual_cues": { "type": "array", "items": { "type": "string" } },
+          "relationships": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["relation", "target"],
+              "properties": {
+                "relation": { "type": "string" },
+                "target": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "terminology": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["term", "meaning"],
+        "properties": {
+          "term": { "type": "string" },
+          "meaning": { "type": "string" }
+        }
+      }
+    },
+    "pre_story": { "type": "string" },
+    "story_outline": { "type": "array", "items": { "type": "string" } },
+    "source_notes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["source_id", "title", "url", "scope", "supports"],
+        "properties": {
+          "source_id": { "type": "string" },
+          "title": { "type": "string" },
+          "url": { "type": "string" },
+          "scope": { "enum": ["target_work", "continuity_reference"] },
+          "supports": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "limitations": { "type": "array", "items": { "type": "string" } },
+    "confidence": { "type": "number", "minimum": 0, "maximum": 1 }
+  }
+}

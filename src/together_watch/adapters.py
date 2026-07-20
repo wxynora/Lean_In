@@ -12,6 +12,7 @@ from .models import (
     SamplePlan,
     WatchSession,
 )
+from .prompts import PromptBundle
 
 
 @runtime_checkable
@@ -41,6 +42,24 @@ class AnalysisProvider(Protocol):
 class KnowledgeProvider(Protocol):
     def prepare(self, media: Mapping[str, Any]) -> Mapping[str, Any]:
         """Return an optional pre-play work background card."""
+
+
+@runtime_checkable
+class KnowledgeSearchProvider(Protocol):
+    def search(self, query: str, *, options: Mapping[str, Any]) -> Sequence[Mapping[str, Any]]:
+        """Return normalized or provider-native search rows for knowledge-card preparation."""
+
+
+@runtime_checkable
+class StructuredModelProvider(Protocol):
+    def generate(
+        self,
+        prompt: PromptBundle,
+        *,
+        media_parts: Sequence[Mapping[str, Any]] = (),
+        options: Mapping[str, Any] | None = None,
+    ) -> Mapping[str, Any]:
+        """Run a structured text or multimodal request using a host-selected model transport."""
 
 
 @runtime_checkable

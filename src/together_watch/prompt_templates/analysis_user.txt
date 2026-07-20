@@ -1,0 +1,6 @@
+Analyze this media batch while preserving continuity with the confirmed prior state.
+
+PURPOSE={{purpose}}
+INPUT_CONTEXT={{context_json}}
+
+The host attaches the authorized audio, image, and subtitle evidence after this text. Do not infer events outside the supplied media range. Return only the schema-compliant JSON result.

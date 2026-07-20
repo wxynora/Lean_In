@@ -1,0 +1,33 @@
+{
+  "analysis_model": {
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "transport": "gemini",
+    "endpoint": "https://generativelanguage.googleapis.com",
+    "api_key_env": "TOGETHER_WATCH_ANALYSIS_API_KEY",
+    "options": {
+      "temperature": 0
+    }
+  },
+  "knowledge_model": {
+    "provider": "google",
+    "model": "gemini-2.5-flash",
+    "transport": "gemini",
+    "endpoint": "https://generativelanguage.googleapis.com",
+    "api_key_env": "TOGETHER_WATCH_KNOWLEDGE_API_KEY",
+    "options": {
+      "temperature": 0
+    }
+  },
+  "knowledge_search": {
+    "mode": "external",
+    "provider": "your-search-provider",
+    "endpoint": "https://search-provider.example/api",
+    "api_key_env": "TOGETHER_WATCH_SEARCH_API_KEY",
+    "query_template": "《{title}》剧情简介 主要人物 人物关系 世界观",
+    "title_preference": "original_title",
+    "options": {
+      "max_results": 3
+    }
+  }
+}

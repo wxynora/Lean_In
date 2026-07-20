@@ -1,0 +1,3 @@
+BACKGROUND MODE: PRODUCE WHEN SAFE
+
+The companion needs limited background context. For purpose=rolling, story_so_far.background may explain only the characters, relationships, premise, and terms that have been established by story_so_far.through_ms and are necessary to understand the current scene. Do not include identities, relationships, reversals, or events first revealed after through_ms. For purpose=identify and purpose=timeline_prepass, story_so_far.background must be an empty string.

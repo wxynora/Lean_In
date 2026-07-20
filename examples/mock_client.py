@@ -11,6 +11,7 @@ from together_watch import (
     PlotChunk,
     SessionMode,
     WatchCore,
+    split_danmaku_markers,
 )
 
 
@@ -83,15 +84,19 @@ def main() -> None:
         recent_user_messages="Was that the red symbol from the door?",
         story_background="The group is looking for a safe route out.",
     )
+    visible_reply, intents = split_danmaku_markers(
+        "I noticed it too.\n[watch:danmaku 01:52 That route was hiding in plain sight.]"
+    )
     action, validation = core.prepare_danmaku(
         session.session_id,
-        target_ms=112_000,
-        text="That route was hiding in plain sight.",
+        target_ms=intents[0].target_ms,
+        text=intents[0].text,
     )
     print(
         json.dumps(
             {
                 "context": asdict(envelope),
+                "visible_reply": visible_reply.strip(),
                 "danmaku": asdict(action),
                 "action_valid": validation.valid,
             },

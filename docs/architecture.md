@@ -242,10 +242,12 @@ Risk events contain a warning time, actual start/end, severity, categories, medi
 client reacts only to confirmed events for its current session and epoch. A warning may appear early,
 but never after the risky interval begins.
 
-Timed danmaku is created from model intent such as `target_ms + text`; the host adds trusted session,
-media, epoch, and action identifiers. The client rejects wrong-session, wrong-media, old-epoch,
-duplicate, expired, or excessively future actions. Scheduling follows media time, so pause does not
-consume the remaining delay.
+Timed danmaku is created from model intent such as `target_ms + text`. A host may receive that intent
+through a native tool call or parse it from a hidden `[watch:danmaku media_time content]` marker.
+Both adapters enter the same action validator; the host adds trusted session, media, epoch, and
+action identifiers. Hidden markers are stripped from visible streaming output and chat archives.
+The client rejects wrong-session, wrong-media, old-epoch, duplicate, expired, or excessively future
+actions. Scheduling follows media time, so pause does not consume the remaining delay.
 
 ## Failure and Degradation Matrix
 

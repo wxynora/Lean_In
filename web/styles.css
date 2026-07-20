@@ -1546,6 +1546,63 @@ label.file-picker:focus-within {
   transform: translateX(-50%);
 }
 
+.analysis-cost-dialog {
+  width: min(calc(100% - 32px), 420px);
+  max-width: none;
+  padding: 0;
+  border: 1px solid var(--watch-border-strong);
+  border-radius: var(--watch-radius);
+  background: var(--watch-elevated);
+  color: var(--watch-primary);
+  box-shadow: var(--watch-shadow);
+}
+
+.analysis-cost-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.analysis-cost-surface {
+  position: relative;
+  display: grid;
+  gap: 10px;
+  padding: 22px 20px 18px;
+}
+
+.analysis-cost-surface h2,
+.analysis-cost-surface p {
+  margin: 0;
+}
+
+.analysis-cost-surface h2 {
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.analysis-cost-amount {
+  color: var(--watch-primary);
+  font-size: 21px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
+.analysis-cost-status {
+  color: var(--watch-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.analysis-cost-detail {
+  color: var(--watch-muted);
+  font-size: 11px;
+  line-height: 1.65;
+  white-space: pre-line;
+}
+
+.analysis-cost-surface .primary-button {
+  margin-top: 8px;
+}
+
 .video-stage:fullscreen,
 .video-stage:-webkit-full-screen {
   width: 100vw;

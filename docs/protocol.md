@@ -401,6 +401,11 @@ The server may respond with a locked/buffering gate until minimum initial risk c
 client either waits or requires the explicit unprotected action. A timeout or analysis failure must
 not be converted silently into protection.
 
+When a committed analysis result reaches `required_until_ms`, the same storage transaction persists
+the playback unlock. Subsequent status responses return `start_gate.status=ready` and
+`start_gate.can_play=true`; clients do not call the start endpoint again. Once persisted, later
+rolling work cannot move the gate back to buffering.
+
 ### Update Mode
 
 `PUT /sessions/{session_id}/mode`
@@ -432,6 +437,30 @@ This operation is idempotent and must be one atomic lifecycle transition:
 4. invalidate open sample plans;
 5. remove raw samples and derived visual frames.
 
+The successful response includes the analysis-model cost reported for this session:
+
+```json
+{
+  "ok": true,
+  "session": { "session_id": "watch_...", "state": "ended" },
+  "analysis_cost": {
+    "currency": "USD",
+    "amount_usd": 0.0124,
+    "complete": true,
+    "provider_calls": 6,
+    "priced_calls": 6,
+    "pending_jobs": 0,
+    "input_tokens": 18200,
+    "output_tokens": 3100
+  }
+}
+```
+
+This total includes only `identify`, `timeline_prepass`, and `rolling` analysis-provider calls.
+Knowledge-card/search/subtitle costs and local fingerprint reuse are excluded. `complete=false`
+means at least one real call did not return pricing or a job was still running when the session
+ended; clients must not present an incomplete zero as free usage.
+
 If the client cannot send DELETE, lease expiry performs the same abandonment cleanup. Worker startup
 must not revive a session whose lease is blank or expired.
 
@@ -458,6 +487,15 @@ The host creates model-visible context from a message snapshot:
 - `current_chunks` intersects the message playhead.
 - `reply_arrival_chunks` ends no later than `reply_arrival_until_ms`.
 - `scheduled_future_chunks` may drive timed actions but never visible reply prose.
+
+The package includes `build_companion_context_prompt()` as a host-side placeholder renderer for this
+envelope. It produces a Chinese dynamic system message using `{assistant}`, `{viewer}`, and `{work}`.
+The renderer is deliberately separate from personality or relationship prompts. A host may translate
+or replace the template while preserving the same time boundaries.
+
+When visual context is enabled, add the contact sheet as a separate user image content block labeled
+`【剧情画面】` immediately before the real viewer message. Images do not change the visible-reply and
+scheduled-future time boundaries above.
 
 ## Plot Chunk
 
@@ -499,7 +537,7 @@ session/media/epoch. Dismissing a cover bypasses that event, not the entire mode
 
 ## Timed Danmaku Action
 
-The model-facing intent is deliberately small:
+The model-facing intent is deliberately small. A host with native tool support may expose:
 
 ```json
 {
@@ -508,7 +546,19 @@ The model-facing intent is deliberately small:
 }
 ```
 
-The trusted host adds:
+A host without suitable tool-call support may request the equivalent hidden marker:
+
+```text
+[watch:danmaku 01:48 That explains the earlier clue.]
+```
+
+`MM:SS` and `HH:MM:SS` are accepted media clocks. `split_danmaku_markers()` removes complete markers
+from the reply and returns provider-neutral intents; `visible_danmaku_stream_text()` also hides a
+partial marker tail during streaming. Invalid or unclosed marker content is hidden and does not
+produce an action. The marker name may be changed by the host, but it must not carry trusted session,
+media, or epoch values supplied by the model.
+
+Both adapters then enter the same validation path. The trusted host adds:
 
 ```json
 {
@@ -523,7 +573,8 @@ The trusted host adds:
 
 Reject actions for another session/media, an old epoch, a duplicate ID, a target already passed, or
 a target outside the host's allowed future window. Deliver through SSE, WebSocket, native callback,
-or the reference browser custom event.
+or the reference browser custom event. Hidden marker text must not be shown or written into visible
+assistant history.
 
 ## Worker Guard Contract
 

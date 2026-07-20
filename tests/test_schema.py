@@ -13,6 +13,7 @@ class SchemaTest(unittest.TestCase):
         self.assertEqual(schema["$schema"], "https://json-schema.org/draft/2020-12/schema")
         self.assertIn("playbackSnapshot", schema["$defs"])
         self.assertIn("clientCapabilities", schema["$defs"])
+        self.assertIn("analysisCost", schema["$defs"])
         self.assertIn("danmakuToolInput", schema["$defs"])
 
 

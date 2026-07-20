@@ -18,6 +18,7 @@ The installed Python package includes these canonical resources:
 | `prompt_templates/knowledge_system.txt` | Spoiler-controlled pre-play knowledge-card rules. |
 | `prompt_templates/knowledge_user.txt` | Adds target identity and host-supplied search sources. |
 | `schemas/knowledge_card.schema.json` | Strict identity, setting, character, term, source, and limitation output. |
+| `prompt_templates/companion_context_zh.txt` | Placeholder Chinese dynamic-system template for the companion reply turn. |
 
 Applications may import the ready-to-send bundles:
 
@@ -85,8 +86,27 @@ The core does not inject viewer names, companion names, relationship prompts, ch
 paths, cookies, or credentials. Product-specific visible chat context belongs in
 `ContextHostAdapter`, after media analysis has completed.
 
+For that final host-owned step, `build_companion_context_prompt()` renders a `ContextEnvelope` into
+the included Chinese placeholder template. Its defaults are `{assistant}`, `{viewer}`, and `{work}`;
+the integrating application replaces them with its own display names. The result is a dynamic system
+message for the real chat turn, not a personality prompt and not a pre-generated reply. It keeps
+current and reply-arrival plot visible while isolating later scheduled-future plot to hidden timed
+danmaku instructions.
+
+If a contact sheet is available, attach it as a separate user content block immediately before the
+real viewer message, using `COMPANION_VISUAL_USER_LABEL` (`【剧情画面】`) followed by the image part.
+Do not place the image in the system text, and do not replace the viewer's real message with it.
+
 `ModelProviderConfig` records the public provider name, model name, transport, optional endpoint,
 API-key environment-variable name, and host-owned options. It never reads the secret itself.
+
+Schema output remains a request-side preference, not a brittle parsing assumption. For
+OpenAI-compatible responses, `parse_openai_compatible_response()` accepts `message.parsed`, JSON or
+text content blocks, fenced JSON, surrounding prose, and deterministic trailing commas. It rejects
+truncated objects and payloads missing host-supplied required fields. On failure, the exception keeps
+normalized usage returned by the provider so a billed call can be included in session cost without
+committing invalid plot or risk data. Hosts should log their own full response envelope with session,
+job, purpose, and media-range identifiers; never log attached audio, frames, credentials, or cookies.
 
 ## Analysis Input Contract
 

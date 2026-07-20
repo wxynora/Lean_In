@@ -1,4 +1,12 @@
-from .actions import create_danmaku_action, stable_action_id, validate_danmaku_action
+from .actions import (
+    DEFAULT_DANMAKU_MARKER,
+    DanmakuMarkerIntent,
+    create_danmaku_action,
+    split_danmaku_markers,
+    stable_action_id,
+    validate_danmaku_action,
+    visible_danmaku_stream_text,
+)
 from .adapters import (
     ActionTransport,
     AnalysisProvider,
@@ -14,6 +22,12 @@ from .adapters import (
 )
 from .context import build_context_envelope
 from .core import WatchCore, WatchCoreError
+from .costs import (
+    ANALYSIS_MODEL_PURPOSES,
+    AnalysisCostSummary,
+    merge_analysis_usage,
+    summarize_analysis_cost,
+)
 from .lifecycle import (
     LifecycleError,
     SessionRuntime,
@@ -45,7 +59,13 @@ from .models import (
     WatchSession,
 )
 from .recall import Bm25PlotRecall
-from .prompts import PromptBundle, build_analysis_prompt, build_knowledge_prompt
+from .prompts import (
+    COMPANION_VISUAL_USER_LABEL,
+    PromptBundle,
+    build_analysis_prompt,
+    build_companion_context_prompt,
+    build_knowledge_prompt,
+)
 from .providers import (
     KnowledgeSearchConfig,
     KnowledgeSearchMode,
@@ -53,6 +73,14 @@ from .providers import (
     ProviderSettings,
     build_knowledge_search_query,
 )
+from .provider_response import (
+    StructuredProviderResult,
+    StructuredResponseError,
+    extract_structured_object,
+    normalize_provider_usage,
+    parse_openai_compatible_response,
+)
+from .start_gate import StartGateDecision, evaluate_start_gate
 from .timeline import (
     MAX_FUTURE_WINDOW_MS,
     TimelineTracker,
@@ -63,14 +91,19 @@ from .timeline import (
 __all__ = [
     "ActionTransport",
     "ActionValidation",
+    "ANALYSIS_MODEL_PURPOSES",
     "AnalysisProvider",
+    "AnalysisCostSummary",
     "AudioSelection",
     "Bm25PlotRecall",
     "ClientCapabilities",
     "ClientSampleExporter",
     "ContextEnvelope",
     "ContextHostAdapter",
+    "COMPANION_VISUAL_USER_LABEL",
+    "DEFAULT_DANMAKU_MARKER",
     "DanmakuAction",
+    "DanmakuMarkerIntent",
     "FearMode",
     "KnowledgeMode",
     "KnowledgeProvider",
@@ -97,6 +130,8 @@ __all__ = [
     "SessionRuntime",
     "SnapshotApplyResult",
     "StructuredModelProvider",
+    "StructuredProviderResult",
+    "StructuredResponseError",
     "SubtitleSelection",
     "SubtitleProvider",
     "TimelineTracker",
@@ -109,14 +144,24 @@ __all__ = [
     "WorkStatus",
     "build_context_envelope",
     "build_analysis_prompt",
+    "build_companion_context_prompt",
     "build_knowledge_prompt",
     "build_knowledge_search_query",
     "create_danmaku_action",
+    "evaluate_start_gate",
+    "extract_structured_object",
+    "merge_analysis_usage",
+    "normalize_provider_usage",
+    "parse_openai_compatible_response",
     "reply_arrival_until_ms",
     "scheduled_future_until_ms",
+    "split_danmaku_markers",
     "stable_action_id",
+    "summarize_analysis_cost",
     "validate_danmaku_action",
+    "visible_danmaku_stream_text",
     "ModelProviderConfig",
+    "StartGateDecision",
 ]
 
 __version__ = "0.1.0"

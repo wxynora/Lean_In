@@ -1,4 +1,9 @@
 import { WatchHostBridge } from "./lib/host.js";
+import {
+  analysisCostPresentation,
+  createAnalysisCostAccumulator,
+  recordAnalysisCost,
+} from "./lib/analysis-cost.js";
 import { LocalFrameSampler, validateClientSamplePlan } from "./lib/local-sampler.js";
 import {
   computeMediaRevision,
@@ -55,7 +60,10 @@ const state = {
   seenDanmaku: new Set(),
   bypassedRisks: new Set(),
   ignoreNextPopState: false,
+  analysisCost: createAnalysisCostAccumulator(),
 };
+
+let analysisCostDialogDestination = null;
 
 for (const node of $$('[data-companion]')) node.textContent = companionName;
 
@@ -86,6 +94,55 @@ function toast(message) {
   node.textContent = message;
   node.hidden = false;
   setTimeout(() => { node.hidden = true; }, 2_500);
+}
+
+function resetAnalysisCostTracking() {
+  state.analysisCost = createAnalysisCostAccumulator();
+}
+
+function recordEndedSessionCost(sessionId, payload) {
+  const resolvedSessionId = String(payload?.session?.session_id || sessionId || "").trim();
+  state.analysisCost = recordAnalysisCost(
+    state.analysisCost,
+    resolvedSessionId,
+    payload?.analysis_cost,
+  );
+}
+
+function closeAnalysisCostDialog() {
+  const dialog = $("#analysis-cost-dialog");
+  if (dialog.open) dialog.close();
+  const destination = analysisCostDialogDestination;
+  analysisCostDialogDestination = null;
+  destination?.();
+}
+
+function showAnalysisCostDialog(accumulator, destination = null) {
+  const presentation = analysisCostPresentation(accumulator);
+  $("#analysis-cost-title").textContent = "本次剧情解析费用";
+  $("#analysis-cost-amount").textContent = presentation.amountText;
+  $("#analysis-cost-amount").hidden = !presentation.amountText;
+  $("#analysis-cost-status").textContent = presentation.statusText;
+  $("#analysis-cost-detail").textContent = presentation.detailText;
+  $("#analysis-cost-detail").hidden = false;
+  analysisCostDialogDestination = destination;
+  $("#analysis-cost-dialog").showModal();
+}
+
+function showAnalysisCostUnavailable() {
+  $("#analysis-cost-title").textContent = "费用暂时无法获取";
+  $("#analysis-cost-amount").hidden = true;
+  $("#analysis-cost-status").textContent = "结束请求没有成功，当前没有生成或推测任何费用。关闭后可以重新结束一次。";
+  $("#analysis-cost-detail").hidden = true;
+  analysisCostDialogDestination = null;
+  $("#analysis-cost-dialog").showModal();
+}
+
+function finishAnalysisCostTracking(destination = null) {
+  const total = state.analysisCost;
+  resetAnalysisCostTracking();
+  if (total.recordedSessionIds.size > 0) showAnalysisCostDialog(total, destination);
+  else destination?.();
 }
 
 function setSelected(nodes, active) {
@@ -709,7 +766,6 @@ function renderStartGate(preparation, payload) {
   if (!active) return false;
 
   $("#start-gate-description").textContent = {
-    coverage_ready: "首段保护已经覆盖到要求位置，再确认一次就会解锁。",
     local_sampling_unavailable: "这个本地文件无法可靠独立取材，胆小模式不能假装已经准备好。",
   }[gate.reason] || "正在等待首段剧情分析覆盖到开播所需范围。";
   const coverage = $("#start-gate-coverage");
@@ -721,8 +777,8 @@ function renderStartGate(preparation, payload) {
   protectionState.hidden = protection.status !== "coverage_low";
   protectionState.textContent = protectionState.hidden ? "" : "当前真实状态：保护覆盖不足";
   const wait = $("#wait-protection-button");
-  wait.disabled = state.starting;
-  wait.textContent = gate.can_unlock ? "保护已就绪，开始播放" : "继续等待";
+  wait.disabled = false;
+  wait.textContent = "继续等待";
   $("#continue-unprotected-button").hidden = !gate.can_continue_unprotected;
   return true;
 }
@@ -743,11 +799,9 @@ function renderPreparation(payload) {
   renderLocalSampling(payload);
   const gate = payload.start_gate || {};
   const hasStarted = Boolean(preparation.started_at) || status === "confirmed";
-  $("#preparation-title").textContent = hasStarted && gate.status === "ready_to_unlock"
-    ? "胆小模式保护已经准备好"
-    : hasStarted && !gate.can_play
-      ? "正在准备首段胆小模式保护"
-      : {
+  $("#preparation-title").textContent = hasStarted && !gate.can_play
+    ? "正在准备首段胆小模式保护"
+    : {
         identifying: "正在识别作品",
         collecting_sources: "正在搜集资料",
         building_card: "正在整理知识卡",
@@ -755,11 +809,9 @@ function renderPreparation(payload) {
         ready_to_confirm: "准备好了，等你确认",
         knowledge_failed: "这次资料没准备好",
       }[status] || "正在准备一起看";
-  $("#preparation-description").textContent = hasStarted && gate.status === "ready_to_unlock"
-    ? "首段风险覆盖已经够了，确认继续后才会真正解锁播放器。"
-    : hasStarted && !gate.can_play
-      ? "播放器仍保持暂停。你可以继续等待，也可以明确选择无保护继续。"
-      : {
+  $("#preparation-description").textContent = hasStarted && !gate.can_play
+    ? "播放器仍保持暂停。你可以继续等待，也可以明确选择无保护继续。"
+    : {
         identifying: "先核对作品、版本和分 P，避免认错片。",
         collecting_sources: "正在从公开来源核对人物、背景和剧情资料。",
         building_card: "正在把资料整理成之后能反复使用的固定卡片。",
@@ -846,20 +898,7 @@ async function pollStatus() {
     renderPreparation(payload);
     renderWatchingStatus(payload);
     await processSamplePlan(payload.sample_plan);
-    if (
-      state.awaitingProtection
-      && payload.start_gate?.status === "ready_to_unlock"
-      && !state.starting
-    ) {
-      state.starting = true;
-      try {
-        const started = await bridge.startSession(state.session.session_id, { protection_action: "wait" });
-        state.session = started.session || state.session;
-        if (started.start_gate?.can_play) unlockPlayback();
-      } finally {
-        state.starting = false;
-      }
-    }
+    if (payload.start_gate?.can_play && !state.unlocked) unlockPlayback();
   } finally {
     state.polling = false;
   }
@@ -1109,33 +1148,43 @@ function renderPreparationPartSelector() {
 }
 
 async function switchPart(part) {
-  await leaveSession({ returnToConfirm: false });
+  const ended = await leaveSession({ returnToConfirm: false, showCost: false });
+  if (!ended) return;
   $("#bilibili-input").value = part.canonical_url;
   $("#part-list").hidden = true;
   await enterPlayer();
 }
 
-async function leaveSession({ returnToConfirm = true, consumeHistory = true } = {}) {
-  if (state.ending) return;
+async function leaveSession({ returnToConfirm = true, consumeHistory = true, showCost = true } = {}) {
+  if (state.ending) return false;
   state.ending = true;
   const sessionId = state.session?.session_id;
   clearRuntimeTimers();
   $("#local-video").pause();
   try {
-    if (sessionId) await bridge.endSession(sessionId);
+    if (sessionId) {
+      const ended = await bridge.endSession(sessionId);
+      recordEndedSessionCost(sessionId, ended);
+    }
   } catch (error) {
-    toast(error.message || "结束会话失败；客户端租约会自动过期");
-  } finally {
-    resetSessionState();
     state.ending = false;
-    if (returnToConfirm) {
-      setPage("confirm");
-      if (consumeHistory && history.state?.[WATCH_PAGE_STATE_KEY] === "player") {
-        state.ignoreNextPopState = true;
-        history.back();
-      }
+    if (state.session) startRuntimeLoops();
+    if (showCost) showAnalysisCostUnavailable();
+    else toast(error.message || "结束会话失败；客户端租约会自动过期");
+    return false;
+  }
+
+  resetSessionState();
+  state.ending = false;
+  if (returnToConfirm) {
+    setPage("confirm");
+    if (consumeHistory && history.state?.[WATCH_PAGE_STATE_KEY] === "player") {
+      state.ignoreNextPopState = true;
+      history.back();
     }
   }
+  if (showCost) finishAnalysisCostTracking();
+  return true;
 }
 
 async function loadRecentSessions() {
@@ -1238,6 +1287,7 @@ $("#custom-delay-input").addEventListener("input", (event) => {
 
 $("#setup-form").addEventListener("submit", (event) => {
   event.preventDefault();
+  resetAnalysisCostTracking();
   enterPlayer();
 });
 
@@ -1250,18 +1300,12 @@ $("#return-confirm-button").addEventListener("click", () => leaveSession());
 $("#end-session-button").addEventListener("click", () => leaveSession());
 $("#confirm-start-button").addEventListener("click", () => startWithAction("confirm"));
 $("#wait-protection-button").addEventListener("click", async () => {
-  if (!state.session || state.starting) return;
+  if (!state.session || state.polling) return;
   state.awaitingProtection = true;
-  state.starting = true;
   try {
-    const result = await bridge.startSession(state.session.session_id, { protection_action: "wait" });
-    state.session = result.session || state.session;
-    if (result.start_gate?.can_play) unlockPlayback();
-    else await pollStatus();
+    await pollStatus();
   } catch (error) {
     setError(error.message || "继续等待失败", "preparation");
-  } finally {
-    state.starting = false;
   }
 });
 $("#continue-unprotected-button").addEventListener("click", () => continueUnprotected());
@@ -1362,6 +1406,11 @@ $("#previous-part-button").addEventListener("click", () => {
 $("#next-part-button").addEventListener("click", () => {
   const index = state.parts.findIndex((item) => item.media_id === state.currentPart?.media_id);
   if (index >= 0 && index < state.parts.length - 1) switchPart(state.parts[index + 1]);
+});
+$("#analysis-cost-confirm").addEventListener("click", closeAnalysisCostDialog);
+$("#analysis-cost-dialog").addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeAnalysisCostDialog();
 });
 
 window.addEventListener("togetherwatch:danmaku", (event) => acceptDanmaku(event.detail));

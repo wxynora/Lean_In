@@ -155,8 +155,9 @@ The page polls `GET /sessions/{id}/status` and renders the server response direc
 
 The confirm button is enabled only when the server returns `preparation.can_confirm`. If fear mode
 is enabled and initial protection is not ready, the player remains locked. The user can wait for
-`ready_to_unlock` or choose the explicit “continue without protection” action. The client never
-labels pending/degraded/failed analysis as protected.
+coverage or choose the explicit “continue without protection” action. Status polling unlocks the
+player as soon as `start_gate.can_play=true`; it does not call `/start` a second time. The client
+never labels pending/degraded/failed analysis as protected.
 
 ## Chat Events
 
@@ -188,7 +189,7 @@ window.dispatchEvent(new CustomEvent("togetherwatch:message", {
 
 ## Timed Danmaku Events
 
-After validating a model tool call, dispatch:
+After validating either a model tool call or a parsed hidden marker, dispatch the same client event:
 
 ```js
 window.dispatchEvent(new CustomEvent("togetherwatch:danmaku", {
@@ -217,10 +218,15 @@ locally dismissible cover above the picture. The bypass applies to that risk eve
 
 The player top-bar back action, the return-to-setup menu action, and browser/system history back all
 call `DELETE /sessions/{id}` before returning to setup. Switching parts also ends the old session
-before creating the next one. The setup-page back action is handed to the embedding host through
-`togetherwatch:back`. `pagehide` also attempts to end an active session. If a browser process is
-killed or the network disappears before DELETE arrives, heartbeats stop and the independent server
-lease must end the session and cancel new work.
+before creating the next one. Each successful DELETE response contributes its `analysis_cost` once,
+keyed by session ID. Part switches accumulate silently; normal return and end flows show the total
+plot-analysis cost across the parts watched in that run. Incomplete totals never present an unknown
+zero as free usage, and a failed DELETE does not invent a cost.
+
+The setup-page back action is handed to the embedding host through `togetherwatch:back`. `pagehide`
+only makes a best-effort DELETE call and never opens the cost dialog. If a browser process is killed
+or the network disappears before DELETE arrives, heartbeats stop and the independent server lease
+must end the session and cancel new work.
 
 The server remains responsible for atomic queued/running cancellation and temporary sample cleanup;
 the browser lease is not a substitute for that transaction.

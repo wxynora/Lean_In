@@ -43,7 +43,8 @@ time, message time, or a pre-generated reaction script.
 - Session-only related-plot recall; no long-term chat or memory search.
 - Known-work and needs-background preparation modes selected explicitly before playback.
 - Optional work-background cards, subtitles, sparse visual context, and rolling story state.
-- Timed danmaku validation against session, media, epoch, media time, and duplicate action IDs.
+- Timed danmaku from native tool calls or hidden short markers, with shared validation against
+  session, media, epoch, media time, and duplicate action IDs.
 - Confirmed risk windows for warning or client-side screen covering.
 - Local video playback without uploading the complete media file.
 - Random local asset IDs plus content-sensitive `media_revision` values to prevent cache reuse after
@@ -186,9 +187,10 @@ A worker must guard a claimed task at these boundaries:
 4. before result commit.
 
 The canonical skip reasons are `session_ended`, `client_lease_expired`, `cancel_requested`,
-`stale_timeline`, and `lease_lost`. Model usage is recorded only after a real provider call and only
-if the result is still allowed to commit. `WorkCoordinator` in `src/together_watch/lifecycle.py`
-provides a tested storage-neutral reference for these transitions.
+`stale_timeline`, and `lease_lost`. Billing usage is recorded only after a real provider response;
+an invalid structured result may still have billable usage even though no plot data is committed.
+`WorkCoordinator` in `src/together_watch/lifecycle.py` provides a tested storage-neutral reference
+for lifecycle transitions.
 
 ## Reference Gateway Contract
 
@@ -213,7 +215,7 @@ Change it with `watchApiBasePath` in `web/config.js`.
 | `POST` | `/sessions/{id}/subtitles/retry` | Retry a configured network subtitle provider. |
 | `POST` | `/sessions/{id}/local-subtitles` | Submit selected local SRT/VTT text and alignment metadata. |
 | `POST` | `/sessions/{id}/analysis/samples` | Submit only material authorized by a client sample plan. |
-| `DELETE` | `/sessions/{id}` | End the session and cancel/purge its remaining work. |
+| `DELETE` | `/sessions/{id}` | End the session, cancel/purge remaining work, and return reported analysis cost. |
 | `GET` | `/bilibili/parts` | Resolve title, real duration, and all parts for a BV ID. |
 
 ### Create a Local Session
@@ -320,9 +322,12 @@ If fear mode is enabled, confirmation does not automatically imply that playback
 start gate may return:
 
 - `buffering`: wait for an initial analyzed risk window;
-- `ready_to_unlock`: call start again to unlock after coverage becomes sufficient;
 - `unprotected`: the user explicitly chose to continue without protection;
 - `ready`: playback may begin.
+
+When an analysis result first reaches the required initial coverage, the host persists the playback
+unlock in the same transaction as that result. The client learns `can_play=true` from status polling;
+it does not need to call start a second time. A later rolling job cannot relock an unlocked session.
 
 A client must never label `pending`, `degraded`, or `failed` analysis as protected.
 
@@ -345,6 +350,11 @@ The analysis result should contain objective plot chunks, dialogue attribution, 
 rolling story state, timeline sections, and deterministic risk windows. Subtitles assist
 understanding; actual image and audio evidence wins when subtitles are misaligned or belong to a
 different edit.
+
+Requesting schema-constrained output is recommended, but the receiver must not assume every provider
+returns one bare JSON string. `parse_openai_compatible_response()` accepts structured message fields,
+content blocks, code fences, surrounding prose, and deterministic trailing-comma errors while still
+rejecting truncated JSON and results without required analysis fields.
 
 Work-background search is optional. A deployment may use a search-capable model, a dedicated search
 API followed by a model, or let its multimodal model build a lightweight card if that provider has
@@ -403,9 +413,50 @@ The Web client deliberately does not invent assistant messages. A host provides
 }
 ```
 
-Model-facing hosts should expose a native danmaku tool with `target_ms` and `text`. The host adds
-session/media/epoch/action identifiers, validates the result, and delivers it to the client. The Web
-transport contract is in [web/README.md](web/README.md).
+The host can turn the returned context envelope into the companion's dynamic system message with the
+included private-name-free template:
+
+```python
+from together_watch import build_companion_context_prompt
+
+system_text = build_companion_context_prompt(
+    envelope=context_envelope,
+    assistant_name="{assistant}",
+    viewer_name="{viewer}",
+    work_name="{work}",
+    analysis_ready=True,
+    danmaku_enabled=True,
+)
+```
+
+This prompt does not define the companion personality or generate a reply in advance. It only tells
+the real chat model what has happened at the message position, which watched chunks are relevant,
+what may happen before the reply arrives, and which later chunks are restricted to timed actions.
+For optional contact sheets, insert a separate user image block labeled `【剧情画面】` immediately
+before the real viewer message.
+
+Model-facing hosts may use either of two adapters:
+
+- a native danmaku tool with `target_ms` and `text`;
+- the hidden short marker `[watch:danmaku HH:MM:SS content]` when tool calls are unavailable or less
+  reliable in the selected chat runtime.
+
+For the marker path, add this instruction to the host's model context:
+
+```text
+If you want to send a timed danmaku, append one hidden marker to the end of the reply:
+[watch:danmaku media_time content]
+Use MM:SS or HH:MM:SS media time from the supplied scheduled-future window. Omit the marker when no
+danmaku is needed.
+```
+
+Use `split_danmaku_markers()` on the completed response and
+`visible_danmaku_stream_text()` while streaming so the marker never reaches visible chat. Every
+parsed intent must still go through `WatchCore.prepare_danmaku()`; the host adds trusted
+session/media/epoch/action identifiers, applies the same time-window and duplicate validation used
+for tool calls, and only then delivers the event. Marker names are configurable, but the portable
+default is `watch:danmaku` and contains no product or companion identity. Do not archive the hidden
+marker as assistant-visible text. The Web transport contract is in [web/README.md](web/README.md).
 
 ## Privacy and Retention
 

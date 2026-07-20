@@ -4,10 +4,74 @@ import json
 import unittest
 from pathlib import Path
 
-from together_watch import build_analysis_prompt, build_knowledge_prompt
+from together_watch import (
+    COMPANION_VISUAL_USER_LABEL,
+    ContextEnvelope,
+    PlotChunk,
+    build_analysis_prompt,
+    build_companion_context_prompt,
+    build_knowledge_prompt,
+)
 
 
 class PromptBundleTests(unittest.TestCase):
+    def test_companion_context_prompt_uses_placeholders_and_separates_future_actions(self) -> None:
+        def plot(chunk_id: str, start_ms: int, end_ms: int, summary: str) -> PlotChunk:
+            return PlotChunk(
+                chunk_id=chunk_id,
+                session_id="watch-demo",
+                timeline_epoch=0,
+                start_ms=start_ms,
+                end_ms=end_ms,
+                summary=summary,
+            )
+
+        prompt = build_companion_context_prompt(
+            envelope=ContextEnvelope(
+                session_id="watch-demo",
+                media_id="movie-demo",
+                message_playhead_ms=90_000,
+                reply_arrival_until_ms=120_000,
+                story_background="两人正在寻找失踪的钥匙。",
+                related_watched_chunks=(plot("related", 20_000, 30_000, "门上出现过同样的标记。"),),
+                current_chunks=(plot("current", 85_000, 100_000, "她在桌下发现一张地图。"),),
+                reply_arrival_chunks=(plot("arrival", 105_000, 115_000, "地图边缘开始发光。"),),
+                scheduled_future_chunks=(plot("future", 145_000, 155_000, "走廊突然响起警报。"),),
+            ),
+        )
+
+        self.assertIn("你是{assistant}，正在和{viewer}一起看{work}", prompt)
+        self.assertIn("剧情背景：", prompt)
+        self.assertIn("当前剧情：", prompt)
+        self.assertIn("与{viewer}说的相关的剧情：", prompt)
+        self.assertIn("当前可见回复最多只能参考到 02:00", prompt)
+        self.assertIn("这些内容不能写进当前可见回复", prompt)
+        self.assertIn("[watch:danmaku 02:25 弹幕内容]", prompt)
+        self.assertEqual(COMPANION_VISUAL_USER_LABEL, "【剧情画面】")
+
+    def test_companion_context_prompt_omits_optional_sections(self) -> None:
+        prompt = build_companion_context_prompt(
+            envelope=ContextEnvelope(
+                session_id="watch-demo",
+                media_id="movie-demo",
+                message_playhead_ms=0,
+                reply_arrival_until_ms=0,
+                story_background="",
+                related_watched_chunks=(),
+                current_chunks=(),
+                reply_arrival_chunks=(),
+                scheduled_future_chunks=(),
+            ),
+            analysis_ready=False,
+            danmaku_enabled=False,
+        )
+
+        self.assertNotIn("剧情背景：", prompt)
+        self.assertNotIn("相关的剧情：", prompt)
+        self.assertIn("这一小段暂时没有可靠的剧情描述。", prompt)
+        self.assertIn("没有可靠描述的部分不要自行补写。", prompt)
+        self.assertIn("不要发送定时弹幕", prompt)
+
     def test_analysis_modes_change_only_background_contract(self) -> None:
         context = {
             "media": {"id": "movie:1", "duration_ms": 100_000},

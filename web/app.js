@@ -15,12 +15,14 @@ const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 const config = globalThis.TogetherWatchConfig || {};
 const bridge = new WatchHostBridge(config);
+const WATCH_PAGE_STATE_KEY = "togetherWatchPage";
 const companionName = new URLSearchParams(location.search).get("companion")
   || config.companion?.name
   || document.documentElement.dataset.companionName
-  || "陪伴者";
+  || "{assistant}";
 
 const state = {
+  page: "confirm",
   source: "bilibili",
   localFile: null,
   localSubtitleFile: null,
@@ -43,20 +45,29 @@ const state = {
   ending: false,
   syncing: false,
   polling: false,
+  chatRunning: false,
   planInFlight: "",
+  localSamplingError: "",
   completedPlans: new Set(),
   planRetryAfter: new Map(),
   timers: [],
   pendingDanmaku: new Map(),
   seenDanmaku: new Set(),
   bypassedRisks: new Set(),
+  ignoreNextPopState: false,
 };
 
 for (const node of $$('[data-companion]')) node.textContent = companionName;
 
-function setPage(name) {
+function setPage(name, { historyMode = "none" } = {}) {
+  state.page = name;
   $("#confirm-page").hidden = name !== "confirm";
   $("#player-page").hidden = name !== "player";
+  if (historyMode === "replace") {
+    history.replaceState({ ...(history.state || {}), [WATCH_PAGE_STATE_KEY]: name }, "");
+  } else if (historyMode === "push" && history.state?.[WATCH_PAGE_STATE_KEY] !== name) {
+    history.pushState({ ...(history.state || {}), [WATCH_PAGE_STATE_KEY]: name }, "");
+  }
   window.scrollTo({ top: 0, behavior: "instant" });
 }
 
@@ -315,12 +326,19 @@ function resetSessionState() {
   state.starting = false;
   state.syncing = false;
   state.polling = false;
+  state.chatRunning = false;
   state.planInFlight = "";
+  state.localSamplingError = "";
   state.completedPlans.clear();
   state.planRetryAfter.clear();
   state.pendingDanmaku.clear();
   state.seenDanmaku.clear();
   state.bypassedRisks.clear();
+  $$("#conversation-list .chat-message").forEach((message) => message.remove());
+  $("#conversation-empty").hidden = false;
+  $("#message-input").value = "";
+  $("#send-button").disabled = true;
+  updateConversationState(false);
 }
 
 async function uploadSelectedSubtitle(media) {
@@ -343,6 +361,9 @@ function initialPlayerState(title) {
   $("#playback-status").hidden = true;
   $("#preparation-title").textContent = "正在建立观看会话";
   $("#preparation-description").textContent = "播放器保持暂停，正在读取真实准备状态。";
+  $("#start-gate-card").hidden = true;
+  $("#local-sampling-card").hidden = true;
+  document.querySelector(".preparation-actions").hidden = false;
   $("#confirm-start-button").disabled = true;
   $("#skip-button").hidden = true;
   setError("", "preparation");
@@ -352,7 +373,7 @@ async function enterPlayer() {
   setError();
   resetSessionState();
   initialPlayerState(selectedTitle());
-  setPage("player");
+  setPage("player", { historyMode: "push" });
   $("#start-button").querySelector(".button-spinner").hidden = false;
   $("#start-button").disabled = true;
   try {
@@ -451,6 +472,23 @@ function progressIndex(status) {
   }[status] ?? 0;
 }
 
+function appendKnowledgeSection(node, titleText, body) {
+  if (!body) return;
+  const section = document.createElement("section");
+  section.className = "knowledge-section";
+  const title = document.createElement("h4");
+  title.textContent = titleText;
+  section.append(title, body);
+  node.append(section);
+}
+
+function textParagraph(value, className = "") {
+  const node = document.createElement("p");
+  if (className) node.className = className;
+  node.textContent = String(value || "");
+  return node;
+}
+
 function renderKnowledgeCard(card) {
   const node = $("#knowledge-card");
   node.replaceChildren();
@@ -459,59 +497,276 @@ function renderKnowledgeCard(card) {
     return;
   }
   node.hidden = false;
-  const label = document.createElement("p");
-  label.className = "section-label accent-label";
-  label.textContent = "剧情背景";
+  const identity = card.canonical_identity || card.identity || {};
+  const header = document.createElement("header");
+  header.className = "knowledge-card-header";
+  const heading = document.createElement("div");
+  const label = textParagraph("作品知识卡", "section-label accent-label");
   const title = document.createElement("h3");
-  title.textContent = card.canonical_identity?.title || "作品资料";
-  const setting = document.createElement("p");
-  setting.textContent = card.setting?.premise || card.pre_story || "";
-  node.append(label, title);
-  if (setting.textContent) node.append(setting);
+  title.textContent = identity.title || "已核对作品";
+  heading.append(label, title);
+  if (identity.original_title && identity.original_title !== identity.title) {
+    heading.append(textParagraph(identity.original_title, "original-title"));
+  }
+  const identityMeta = [
+    Number(identity.year) > 0 ? identity.year : "",
+    { movie: "电影", series: "剧集" }[identity.work_type] || identity.work_type,
+    identity.season,
+    identity.episode,
+  ].filter(Boolean).join(" · ");
+  if (identityMeta) heading.append(textParagraph(identityMeta, "identity-meta"));
+  header.append(heading);
+  if (Number.isFinite(Number(card.confidence))) {
+    const confidence = document.createElement("span");
+    confidence.className = "confidence-badge";
+    confidence.textContent = `可信度 ${Math.round(Number(card.confidence) * 100)}%`;
+    header.append(confidence);
+  }
+  node.append(header);
+
+  if (identity.version_notes) {
+    appendKnowledgeSection(node, "版本说明", textParagraph(identity.version_notes));
+  }
+  if (card.setting?.premise) {
+    const setting = document.createElement("div");
+    setting.append(textParagraph(card.setting.premise));
+    const settingMeta = [card.setting.time_period, ...(card.setting.locations || [])]
+      .filter(Boolean)
+      .join(" · ");
+    if (settingMeta) setting.append(textParagraph(settingMeta, "knowledge-muted"));
+    appendKnowledgeSection(node, "故事前提", setting);
+  }
+  if (card.pre_story) {
+    appendKnowledgeSection(node, "理解开场所需", textParagraph(card.pre_story));
+  }
+
   const characters = Array.isArray(card.characters) ? card.characters : [];
-  for (const character of characters) {
-    const line = document.createElement("p");
-    const name = character.name || character.canonical_name || "角色";
-    const role = character.role || character.description || "";
-    line.textContent = role ? `${name}：${role}` : name;
-    node.append(line);
+  if (characters.length) {
+    const list = document.createElement("div");
+    list.className = "character-list";
+    for (const character of characters) {
+      const entry = document.createElement("div");
+      entry.className = "character-entry";
+      const name = document.createElement("strong");
+      const aliases = (character.aliases || []).filter(Boolean);
+      name.textContent = `${character.name || "角色"}${aliases.length ? `  ·  ${aliases.join(" / ")}` : ""}`;
+      entry.append(name);
+      if (character.identity) entry.append(textParagraph(character.identity));
+      const relationships = (character.relationships || []).map((relationship) => (
+        typeof relationship === "string"
+          ? relationship
+          : [relationship.target, relationship.relation].filter(Boolean).join(" · ")
+      )).filter(Boolean);
+      if (relationships.length) {
+        const relationLine = document.createElement("small");
+        relationLine.textContent = relationships.join("；");
+        entry.append(relationLine);
+      }
+      list.append(entry);
+    }
+    appendKnowledgeSection(node, "人物与关系", list);
+  }
+
+  if (Array.isArray(card.terminology) && card.terminology.length) {
+    const list = document.createElement("ul");
+    for (const item of card.terminology) {
+      const line = document.createElement("li");
+      line.textContent = `${item.term || "名词"}  ·  ${item.meaning || ""}`;
+      list.append(line);
+    }
+    appendKnowledgeSection(node, "专有名词", list);
+  }
+  if (Array.isArray(card.story_outline) && card.story_outline.length) {
+    const list = document.createElement("ol");
+    for (const item of card.story_outline) {
+      const line = document.createElement("li");
+      line.textContent = item;
+      list.append(line);
+    }
+    appendKnowledgeSection(node, "剧情主线", list);
+  }
+  if (Array.isArray(card.limitations) && card.limitations.length) {
+    appendKnowledgeSection(node, "资料限制", textParagraph(card.limitations.join("；")));
+  }
+  const sources = card.source_notes || card.sources || [];
+  if (Array.isArray(sources) && sources.length) {
+    const list = document.createElement("ul");
+    list.className = "source-list";
+    for (const source of sources) {
+      const line = document.createElement("li");
+      if (source.url) {
+        const link = document.createElement("a");
+        link.href = source.url;
+        link.target = "_blank";
+        link.rel = "noreferrer";
+        link.textContent = source.title || source.url;
+        line.append(link);
+      } else {
+        line.textContent = source.title || "公开资料";
+      }
+      list.append(line);
+    }
+    appendKnowledgeSection(node, "公开来源", list);
   }
 }
 
 function renderSubtitle(preparation) {
   const lookup = preparation.subtitle_lookup || {};
-  const pending = new Set(["pending", "queued", "searching", "awaiting_client"]).has(lookup.status);
+  const status = lookup.status || "pending";
+  const pending = new Set(["pending", "queued", "searching", "awaiting_client"]).has(status);
   $("#subtitle-spinner").hidden = !pending;
   $("#subtitle-title").textContent = {
-    found: "字幕已准备",
+    pending: "等待字幕查找",
+    queued: "等待字幕查找",
+    searching: "正在查找字幕",
+    found: "字幕已找到",
     not_found: "没有找到匹配字幕",
     not_configured: "字幕服务未配置",
-    awaiting_client: "等待本地字幕",
-    failed: "字幕准备失败",
-  }[lookup.status] || "正在准备字幕";
-  $("#subtitle-description").textContent = lookup.message || "字幕只用于辅助理解，实际音画优先。";
+    original_title_unavailable: "暂时拿不到作品原名",
+    awaiting_client: "等待载入本地字幕",
+    failed: "字幕查找失败",
+  }[status] || `字幕状态：${status}`;
+  $("#subtitle-description").textContent = lookup.error || lookup.message || {
+    pending: "作品识别完成后会自动开始查找。",
+    queued: "作品识别完成后会自动开始查找。",
+    searching: "正在按原名、语言和版本匹配可用字幕。",
+    awaiting_client: "已经选好本地字幕轨，客户端正在读取并提交时间轴。",
+    found: "开播时会使用这次准备得到的字幕版本。",
+    not_found: "当前没有匹配结果，可以重试或按服务端门禁继续。",
+    not_configured: "当前环境没有配置字幕来源，可以按服务端门禁继续。",
+    original_title_unavailable: "作品原名还没准备好，可以稍后重试。",
+    failed: "这次查找没有完成，可以重新发起。",
+  }[status] || "字幕状态正在同步。";
+
+  const metadata = $("#subtitle-metadata");
+  metadata.replaceChildren();
+  if (status === "found") {
+    const coverageStart = lookup.coverage_start_ms;
+    const coverageEnd = lookup.coverage_end_ms;
+    const coverage = coverageStart != null && coverageEnd != null
+      ? `${formatMediaTime(coverageStart)} – ${formatMediaTime(coverageEnd)}`
+      : coverageStart != null
+        ? `从 ${formatMediaTime(coverageStart)} 开始`
+        : coverageEnd != null
+          ? `截至 ${formatMediaTime(coverageEnd)}`
+          : "";
+    const rows = [
+      ["查询原名", lookup.query_title],
+      ["字幕来源", lookup.provider],
+      ["语言", (lookup.language_codes || []).join(" / ")],
+      ["匹配版本", lookup.release_name],
+      ["格式", String(lookup.format || "").toUpperCase()],
+      ["条目数", Number(lookup.cue_count) > 0 ? String(lookup.cue_count) : ""],
+      ["覆盖区间", coverage],
+    ].filter(([, value]) => value);
+    for (const [label, value] of rows) {
+      const term = document.createElement("dt");
+      term.textContent = label;
+      const detail = document.createElement("dd");
+      detail.textContent = value;
+      metadata.append(term, detail);
+    }
+    metadata.hidden = rows.length === 0;
+  } else {
+    metadata.hidden = true;
+  }
   $("#retry-subtitles-button").hidden = !lookup.can_retry || state.source === "local";
+}
+
+function renderLocalSampling(payload) {
+  const card = $("#local-sampling-card");
+  const sampling = payload.sample_plan?.local_sampling || {};
+  const reasons = Array.isArray(sampling.reasons) ? sampling.reasons.filter(Boolean) : [];
+  const statusText = {
+    pending: "正在等待本地剧情取材。",
+    queued: "本地剧情取材已经排队。",
+    sampling: "正在从本地视频读取当前取材计划。",
+    uploading: "正在提交本轮本地剧情素材。",
+    ready: "本地剧情素材已经可用于分析。",
+    unavailable: "当前本地视频无法可靠取材。",
+    failed: "本轮本地剧情取材失败。",
+  }[sampling.status] || sampling.status || "";
+  const detail = state.localSamplingError
+    || reasons.join("；")
+    || sampling.audio_degraded_reason
+    || statusText;
+  const visible = state.source === "local" && Boolean(detail);
+  card.hidden = !visible;
+  if (!visible) return;
+  $("#local-sampling-description").textContent = detail;
+  const retryable = Boolean(state.localSamplingError)
+    || ["unavailable", "failed"].includes(sampling.status);
+  $("#retry-local-sampling-button").hidden = !retryable || !payload.sample_plan?.plan_id;
+}
+
+function renderStartGate(preparation, payload) {
+  const gate = payload.start_gate || {};
+  const protection = payload.fear_protection || {};
+  const hasStarted = Boolean(preparation.started_at) || preparation.status === "confirmed";
+  const active = hasStarted && !gate.can_play;
+  const card = $("#start-gate-card");
+  card.hidden = !active;
+  if (!active) return false;
+
+  $("#start-gate-description").textContent = {
+    coverage_ready: "首段保护已经覆盖到要求位置，再确认一次就会解锁。",
+    local_sampling_unavailable: "这个本地文件无法可靠独立取材，胆小模式不能假装已经准备好。",
+  }[gate.reason] || "正在等待首段剧情分析覆盖到开播所需范围。";
+  const coverage = $("#start-gate-coverage");
+  coverage.hidden = !(Number(gate.required_until_ms) > 0);
+  coverage.textContent = coverage.hidden
+    ? ""
+    : `已覆盖 ${formatMediaTime(gate.covered_until_ms)} · 需要到 ${formatMediaTime(gate.required_until_ms)}`;
+  const protectionState = $("#start-gate-protection");
+  protectionState.hidden = protection.status !== "coverage_low";
+  protectionState.textContent = protectionState.hidden ? "" : "当前真实状态：保护覆盖不足";
+  const wait = $("#wait-protection-button");
+  wait.disabled = state.starting;
+  wait.textContent = gate.can_unlock ? "保护已就绪，开始播放" : "继续等待";
+  $("#continue-unprotected-button").hidden = !gate.can_continue_unprotected;
+  return true;
 }
 
 function renderPreparation(payload) {
   const preparation = payload.preparation || {};
-  const index = progressIndex(preparation.status);
+  const status = preparation.status || preparation.stage || "identifying";
+  preparation.status = status;
+  const index = progressIndex(status);
   $$("#preparation-progress li").forEach((item, itemIndex) => {
     item.classList.toggle("is-complete", itemIndex < index);
     item.classList.toggle("is-active", itemIndex === index && index < 5);
   });
   const cardStatus = preparation.knowledge_card_status;
-  $("#identified-card").hidden = cardStatus !== "not_required";
-  renderKnowledgeCard(payload.knowledge_card);
+  $("#identified-card").hidden = !(status === "ready_to_confirm" && cardStatus === "not_required");
+  renderKnowledgeCard(payload.knowledge_card || preparation.knowledge_card);
   renderSubtitle(preparation);
-  $("#preparation-title").textContent = preparation.status === "ready_to_confirm"
-    ? "准备好了，等你确认"
-    : preparation.started_at
-      ? "正在准备开播保护范围"
-      : "正在准备这次一起看";
-  $("#preparation-description").textContent = preparation.started_at
-    ? "会话已经确认，播放器仍会保持暂停，直到保护范围就绪或你明确继续。"
-    : "识别、资料和字幕状态都来自真实后端。";
+  renderLocalSampling(payload);
+  const gate = payload.start_gate || {};
+  const hasStarted = Boolean(preparation.started_at) || status === "confirmed";
+  $("#preparation-title").textContent = hasStarted && gate.status === "ready_to_unlock"
+    ? "胆小模式保护已经准备好"
+    : hasStarted && !gate.can_play
+      ? "正在准备首段胆小模式保护"
+      : {
+        identifying: "正在识别作品",
+        collecting_sources: "正在搜集资料",
+        building_card: "正在整理知识卡",
+        searching_subtitles: "正在查找匹配字幕",
+        ready_to_confirm: "准备好了，等你确认",
+        knowledge_failed: "这次资料没准备好",
+      }[status] || "正在准备一起看";
+  $("#preparation-description").textContent = hasStarted && gate.status === "ready_to_unlock"
+    ? "首段风险覆盖已经够了，确认继续后才会真正解锁播放器。"
+    : hasStarted && !gate.can_play
+      ? "播放器仍保持暂停。你可以继续等待，也可以明确选择无保护继续。"
+      : {
+        identifying: "先核对作品、版本和分 P，避免认错片。",
+        collecting_sources: "正在从公开来源核对人物、背景和剧情资料。",
+        building_card: "正在把资料整理成之后能反复使用的固定卡片。",
+        searching_subtitles: "正在按作品原名和版本查找可用字幕。",
+        ready_to_confirm: "看过卡片后再开播；你也可以明确跳过。",
+        knowledge_failed: "可以重新搜集，也可以不等资料直接开始。",
+      }[status] || "确认完成前不会解锁播放。";
 
   const analysis = payload.analysis || {};
   $("#analysis-state-card").hidden = !analysis.error && !preparation.knowledge_card_error;
@@ -521,13 +776,9 @@ function renderPreparation(payload) {
   $("#visual-state-card").hidden = !visual.degraded_reason;
   $("#visual-state-description").textContent = visual.degraded_reason || "";
 
-  const gate = payload.start_gate || {};
-  if (preparation.started_at && !gate.can_play) {
-    $("#confirm-start-button").disabled = true;
-    $("#confirm-start-button").textContent = "正在准备保护范围";
-    $("#skip-button").hidden = !gate.can_continue_unprotected;
-    $("#skip-button").textContent = "明确无保护继续";
-  } else {
+  const gateActive = renderStartGate(preparation, payload);
+  document.querySelector(".preparation-actions").hidden = gateActive;
+  if (!gateActive) {
     $("#confirm-start-button").disabled = !preparation.can_confirm;
     $("#confirm-start-button").textContent = "确认开始";
     $("#skip-button").hidden = !preparation.can_skip;
@@ -547,7 +798,8 @@ async function processSamplePlan(plan) {
   if (state.planInFlight || state.completedPlans.has(plan.plan_id)) return;
   if ((state.planRetryAfter.get(plan.plan_id) || 0) > Date.now()) return;
   if (plan.audio_required) {
-    setError("当前浏览器不能从未来位置导出所选音轨，无法执行这份音频取材计划。", "preparation");
+    state.localSamplingError = "当前浏览器不能从未来位置导出所选音轨，无法执行这份音频取材计划。";
+    setError(state.localSamplingError, "preparation");
     return;
   }
   state.planInFlight = plan.plan_id;
@@ -573,10 +825,12 @@ async function processSamplePlan(plan) {
       exported.files,
     );
     state.completedPlans.add(plan.plan_id);
+    state.localSamplingError = "";
     setError("", "preparation");
   } catch (error) {
     state.planRetryAfter.set(plan.plan_id, Date.now() + 5_000);
-    setError(error.message || "本地取材失败", "preparation");
+    state.localSamplingError = error.message || "本地取材失败";
+    setError(state.localSamplingError, "preparation");
   } finally {
     state.planInFlight = "";
   }
@@ -588,6 +842,7 @@ async function pollStatus() {
   try {
     const payload = await bridge.getStatus(state.session.session_id);
     state.status = payload;
+    if (payload.playback) updatePlaybackClock(payload.playback);
     renderPreparation(payload);
     renderWatchingStatus(payload);
     await processSamplePlan(payload.sample_plan);
@@ -619,10 +874,13 @@ function renderWatchingStatus(payload) {
       : "正在追上当前剧情";
   const notice = $("#playback-notice");
   const protection = payload.fear_protection || {};
-  if (state.unlocked && protection.status === "coverage_low") {
-    notice.textContent = "胆小模式保护范围不足";
+  if (state.unlocked && protection.status === "protected") {
+    notice.textContent = `胆小模式已保护 · 前方覆盖 ${formatMediaTime(protection.coverage_remaining_ms)}`;
     notice.hidden = false;
-  } else if (!notice.textContent || notice.textContent === "胆小模式保护范围不足") {
+  } else if (state.unlocked && protection.status === "coverage_low") {
+    notice.textContent = "胆小模式当前覆盖不足，不会假装能完整预警或遮挡。";
+    notice.hidden = false;
+  } else {
     notice.hidden = true;
     notice.textContent = "";
   }
@@ -681,7 +939,21 @@ function unlockPlayback() {
   $("#sync-badge").textContent = "播放已同步";
   const chatReady = bridge.canSendMessage();
   $("#message-input").disabled = !chatReady;
+  updateConversationState(false);
   if (!chatReady) setError("聊天宿主未配置；播放与分析仍会正常同步。", "message");
+}
+
+function updateConversationState(runActive = state.chatRunning) {
+  const chatReady = bridge.canSendMessage();
+  $("#conversation-state").textContent = runActive
+    ? `${companionName}正在回复`
+    : $("#danmaku-input").checked
+      ? `${companionName}的弹幕已开启`
+      : `${companionName}的弹幕已关闭`;
+  $("#message-input").placeholder = chatReady
+    ? `和${companionName}说点什么...`
+    : "等待观看会话同步...";
+  $("#send-button").textContent = runActive ? "等他" : "发送";
 }
 
 function appendMessage(speaker, text, isUser = false) {
@@ -723,11 +995,20 @@ function currentPlayheadMs() {
 function renderDanmaku(action) {
   const layer = $("#danmaku-layer");
   while (layer.children.length >= 3) layer.firstElementChild?.remove();
+  [...layer.children].forEach((child, index) => {
+    child.style.top = `${index * 30}px`;
+  });
   const item = document.createElement("span");
   item.className = "danmaku-item";
   item.textContent = action.text;
+  item.style.top = `${layer.children.length * 30}px`;
   layer.append(item);
-  item.addEventListener("animationend", () => item.remove(), { once: true });
+  item.addEventListener("animationend", () => {
+    item.remove();
+    [...layer.children].forEach((child, index) => {
+      child.style.top = `${index * 30}px`;
+    });
+  }, { once: true });
 }
 
 function acceptDanmaku(raw) {
@@ -759,19 +1040,22 @@ function renderRisk(risks) {
   if (!state.unlocked || !$("#fear-mode-input").checked) return clearRisk();
   const playhead = currentPlayheadMs();
   const risk = risks.find((item) => (
-    !state.bypassedRisks.has(item.id)
+    !state.bypassedRisks.has(item.id || item.risk_id)
     && playhead >= Number(item.warn_at_ms || item.start_ms || 0)
     && playhead <= Number(item.end_ms || 0)
   ));
   if (!risk) return clearRisk();
-  const label = risk.label || "即将出现强烈画面";
+  const riskId = risk.id || risk.risk_id;
+  const label = risk.companion_hint || risk.label || "前面有一小段突发高能。";
   if (state.fearAction === "cover_video") {
     $("#risk-cover-label").textContent = label;
-    $("#risk-cover").dataset.riskId = risk.id;
+    $("#risk-cover-clock").textContent = `${formatMediaTime(playhead)} / ${formatMediaTime(risk.end_ms)}`;
+    $("#risk-cover").dataset.riskId = riskId;
     $("#risk-cover").hidden = false;
     $("#risk-warning").hidden = true;
   } else {
     $("#risk-warning-label").textContent = label;
+    $("#risk-warning").dataset.riskId = riskId;
     $("#risk-warning").hidden = false;
     $("#risk-cover").hidden = true;
   }
@@ -780,25 +1064,47 @@ function renderRisk(risks) {
 function clearRisk() {
   $("#risk-warning").hidden = true;
   $("#risk-cover").hidden = true;
+  $("#risk-warning").dataset.riskId = "";
   $("#risk-cover").dataset.riskId = "";
 }
 
 function renderPartNavigation() {
   const nav = $("#part-navigation");
+  renderPreparationPartSelector();
   nav.hidden = state.parts.length <= 1;
   if (nav.hidden) return;
   const index = state.parts.findIndex((item) => item.media_id === state.currentPart?.media_id);
   $("#previous-part-button").disabled = index <= 0;
   $("#next-part-button").disabled = index < 0 || index >= state.parts.length - 1;
-  $("#part-selector-button").textContent = state.currentPart?.title || `P${state.currentPart?.page || 1}`;
+  $("#part-selector-meta").textContent = `P${state.currentPart?.page || 1} / ${state.parts.length} · ${formatMediaTime(state.currentPart?.duration_ms)}`;
+  $("#part-selector-title").textContent = state.currentPart?.title || "";
   const list = $("#part-list");
   list.replaceChildren();
   for (const part of state.parts) {
     const button = document.createElement("button");
     button.type = "button";
     button.textContent = `P${part.page} · ${part.title}`;
+    button.classList.toggle("is-selected", part.media_id === state.currentPart?.media_id);
     button.addEventListener("click", () => switchPart(part));
     list.append(button);
+  }
+}
+
+function renderPreparationPartSelector() {
+  const node = $("#preparation-part-selector");
+  node.replaceChildren();
+  node.hidden = state.parts.length <= 1 || !state.currentPart;
+  if (node.hidden) return;
+  for (const part of state.parts) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.classList.toggle("is-selected", part.media_id === state.currentPart.media_id);
+    button.textContent = `P${part.page}`;
+    button.setAttribute("aria-label", `P${part.page} · ${part.title}`);
+    if (part.media_id !== state.currentPart.media_id) {
+      button.addEventListener("click", () => switchPart(part));
+    }
+    node.append(button);
   }
 }
 
@@ -809,7 +1115,7 @@ async function switchPart(part) {
   await enterPlayer();
 }
 
-async function leaveSession({ returnToConfirm = true } = {}) {
+async function leaveSession({ returnToConfirm = true, consumeHistory = true } = {}) {
   if (state.ending) return;
   state.ending = true;
   const sessionId = state.session?.session_id;
@@ -822,7 +1128,13 @@ async function leaveSession({ returnToConfirm = true } = {}) {
   } finally {
     resetSessionState();
     state.ending = false;
-    if (returnToConfirm) setPage("confirm");
+    if (returnToConfirm) {
+      setPage("confirm");
+      if (consumeHistory && history.state?.[WATCH_PAGE_STATE_KEY] === "player") {
+        state.ignoreNextPopState = true;
+        history.back();
+      }
+    }
   }
 }
 
@@ -887,6 +1199,8 @@ $("#fear-mode-input").addEventListener("change", (event) => {
   if (!event.target.checked) clearRisk();
 });
 
+$("#danmaku-input").addEventListener("change", () => updateConversationState());
+
 for (const button of $$('[data-fear-action]')) {
   button.addEventListener("click", () => {
     state.fearAction = button.dataset.fearAction;
@@ -912,7 +1226,12 @@ for (const button of $$('[data-delay]')) {
 
 $("#custom-delay-input").addEventListener("input", (event) => {
   const seconds = Number.parseInt(event.target.value, 10);
-  if (Number.isInteger(seconds) && seconds >= 0 && seconds <= 120) {
+  const valid = Number.isInteger(seconds) && seconds >= 0 && seconds <= 120;
+  $("#custom-delay-help").classList.toggle("is-error", !valid);
+  $("#custom-delay-help").textContent = valid
+    ? `当前会在 ${seconds} 秒后回复`
+    : "请输入 0–120 之间的整数";
+  if (valid) {
     state.replyLeadMs = seconds * 1000;
   }
 });
@@ -930,6 +1249,22 @@ $("#player-back").addEventListener("click", () => leaveSession());
 $("#return-confirm-button").addEventListener("click", () => leaveSession());
 $("#end-session-button").addEventListener("click", () => leaveSession());
 $("#confirm-start-button").addEventListener("click", () => startWithAction("confirm"));
+$("#wait-protection-button").addEventListener("click", async () => {
+  if (!state.session || state.starting) return;
+  state.awaitingProtection = true;
+  state.starting = true;
+  try {
+    const result = await bridge.startSession(state.session.session_id, { protection_action: "wait" });
+    state.session = result.session || state.session;
+    if (result.start_gate?.can_play) unlockPlayback();
+    else await pollStatus();
+  } catch (error) {
+    setError(error.message || "继续等待失败", "preparation");
+  } finally {
+    state.starting = false;
+  }
+});
+$("#continue-unprotected-button").addEventListener("click", () => continueUnprotected());
 $("#skip-button").addEventListener("click", () => {
   if (state.status?.preparation?.started_at) continueUnprotected();
   else startWithAction("skip");
@@ -950,6 +1285,15 @@ $("#retry-subtitles-button").addEventListener("click", async () => {
     setError(error.message || "重新查找字幕失败", "preparation");
   }
 });
+$("#retry-local-sampling-button").addEventListener("click", async () => {
+  const plan = state.status?.sample_plan;
+  if (!plan?.plan_id) return;
+  state.localSamplingError = "";
+  state.planRetryAfter.delete(plan.plan_id);
+  state.completedPlans.delete(plan.plan_id);
+  await processSamplePlan(plan);
+  renderLocalSampling(state.status || {});
+});
 
 $("#fullscreen-button").addEventListener("click", async () => {
   if (document.fullscreenElement) await document.exitFullscreen();
@@ -964,7 +1308,10 @@ $("#message-form").addEventListener("submit", async (event) => {
   const input = $("#message-input");
   const text = input.value.trim();
   if (!text) return;
+  state.chatRunning = true;
+  input.disabled = true;
   $("#send-button").disabled = true;
+  updateConversationState(true);
   setError("", "message");
   try {
     await sendMessage(text);
@@ -972,7 +1319,10 @@ $("#message-form").addEventListener("submit", async (event) => {
   } catch (error) {
     setError(error.message || "消息发送失败", "message");
   } finally {
+    state.chatRunning = false;
+    input.disabled = !bridge.canSendMessage();
     $("#send-button").disabled = !input.value.trim();
+    updateConversationState(false);
   }
 });
 
@@ -997,6 +1347,11 @@ $("#bypass-risk-button").addEventListener("click", () => {
   if (riskId) state.bypassedRisks.add(riskId);
   clearRisk();
 });
+$("#dismiss-risk-button").addEventListener("click", () => {
+  const riskId = $("#risk-warning").dataset.riskId;
+  if (riskId) state.bypassedRisks.add(riskId);
+  clearRisk();
+});
 $("#part-selector-button").addEventListener("click", () => {
   $("#part-list").hidden = !$("#part-list").hidden;
 });
@@ -1015,11 +1370,21 @@ window.addEventListener("togetherwatch:message", (event) => {
   if (detail.session_id && detail.session_id !== state.session?.session_id) return;
   appendMessage(detail.speaker || companionName, detail.text, detail.role === "user");
 });
+window.addEventListener("popstate", () => {
+  if (state.ignoreNextPopState) {
+    state.ignoreNextPopState = false;
+    return;
+  }
+  if (state.page === "player") {
+    leaveSession({ consumeHistory: false });
+  }
+});
 window.addEventListener("pagehide", () => {
   if (state.session?.session_id) bridge.endSession(state.session.session_id).catch(() => {});
 });
 
-setPage("confirm");
+setPage("confirm", { historyMode: "replace" });
 selectSource("bilibili");
 updateSelection();
+updateConversationState(false);
 loadRecentSessions();

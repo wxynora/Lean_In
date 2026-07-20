@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-companion-name="陪伴者">
+<html lang="zh-CN" data-companion-name="{assistant}">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -19,7 +19,7 @@
         <main class="confirm-scroll">
           <form id="setup-form" class="setup-form" novalidate>
             <section class="form-section" aria-labelledby="source-label">
-              <p id="source-label" class="section-label">视频来源</p>
+              <p id="source-label" class="section-label">播放来源</p>
               <div class="segmented-control" role="tablist" aria-label="视频来源">
                 <button id="source-bilibili" class="segment is-selected" type="button" role="tab" aria-selected="true" aria-controls="bilibili-fields" data-source="bilibili">Bilibili</button>
                 <button id="source-local" class="segment" type="button" role="tab" aria-selected="false" aria-controls="local-fields" data-source="local">本地视频</button>
@@ -161,8 +161,9 @@
                 <button class="choice-chip" type="button" data-delay="custom">自定义</button>
               </div>
               <label id="custom-delay-field" class="field compact-field" hidden>
-                <span>自定义延迟（0–120 秒）</span>
+                <span>自定义延迟</span>
                 <input id="custom-delay-input" inputmode="numeric" pattern="[0-9]*" value="30">
+                <small id="custom-delay-help">当前会在 30 秒后回复</small>
               </label>
 
               <div class="section-divider wide"></div>
@@ -215,20 +216,31 @@
                 <p id="player-lock-text">已暂停 · 确认开始后解锁播放</p>
               </div>
               <div id="risk-warning" class="risk-warning" role="status" hidden>
-                <span>前方高能</span>
-                <strong id="risk-warning-label">即将出现强烈画面</strong>
+                <div>
+                  <span><span data-companion></span>提醒</span>
+                  <strong id="risk-warning-label">前面有一小段突发高能。</strong>
+                </div>
+                <button id="dismiss-risk-button" type="button">知道了</button>
               </div>
               <div id="risk-cover" class="risk-cover" hidden>
-                <p class="section-label">胆小模式</p>
-                <h2>先替你挡一下</h2>
-                <p id="risk-cover-label">高能片段正在经过</p>
+                <svg class="risk-cover-shield" viewBox="0 0 100 100" role="img" aria-label="保护盾牌">
+                  <path class="shield-base" d="M50 6 C64 14 74 16 87 18 L84 52 C82 72 68 87 50 94 C32 87 18 72 16 52 L13 18 C26 16 36 14 50 6 Z"></path>
+                  <path class="shield-half" d="M50 12 C39 18 30 20 20 21 L23 51 C25 67 36 80 50 87 Z"></path>
+                  <path class="shield-outline" d="M50 6 C64 14 74 16 87 18 L84 52 C82 72 68 87 50 94 C32 87 18 72 16 52 L13 18 C26 16 36 14 50 6 Z"></path>
+                </svg>
+                <h2><span data-companion></span>正在保护你</h2>
+                <p id="risk-cover-label">前面有一小段突发高能，我先替你挡着。</p>
                 <button id="bypass-risk-button" class="secondary-button" type="button">我还是要看</button>
+                <time id="risk-cover-clock">00:00 / 00:00</time>
               </div>
             </div>
 
             <nav id="part-navigation" class="part-navigation" hidden aria-label="分 P 导航">
               <button id="previous-part-button" class="part-button" type="button">上一 P</button>
-              <button id="part-selector-button" class="current-part-button" type="button"></button>
+              <button id="part-selector-button" class="current-part-button" type="button">
+                <strong id="part-selector-meta"></strong>
+                <small id="part-selector-title"></small>
+              </button>
               <button id="next-part-button" class="part-button" type="button">下一 P</button>
               <div id="part-list" class="part-list" hidden></div>
             </nav>
@@ -273,6 +285,11 @@
               <dl id="subtitle-metadata" hidden></dl>
               <button id="retry-subtitles-button" class="text-button" type="button" hidden>重新查找字幕</button>
             </section>
+            <section id="local-sampling-card" class="panel status-panel" hidden>
+              <p class="section-label accent-label">本地剧情取材</p>
+              <p id="local-sampling-description"></p>
+              <button id="retry-local-sampling-button" class="text-button" type="button" hidden>重试当前取材计划</button>
+            </section>
             <section id="analysis-state-card" class="panel status-panel" hidden>
               <p id="analysis-state-title" class="section-label accent-label"></p>
               <p id="analysis-state-description"></p>
@@ -282,6 +299,14 @@
               <p id="visual-state-description"></p>
             </section>
             <div id="preparation-error" class="error-panel" role="alert" hidden></div>
+            <section id="start-gate-card" class="panel start-gate-card" hidden>
+              <p class="section-label accent-label">播放器仍然锁定</p>
+              <p id="start-gate-description"></p>
+              <p id="start-gate-coverage" class="gate-detail" hidden></p>
+              <p id="start-gate-protection" class="gate-protection" hidden></p>
+              <button id="wait-protection-button" class="primary-button compact-primary" type="button">继续等待</button>
+              <button id="continue-unprotected-button" class="text-button" type="button" hidden>明确无保护继续</button>
+            </section>
             <div class="preparation-actions">
               <button id="confirm-start-button" class="primary-button" type="button" disabled>确认开始</button>
               <div class="secondary-actions">
@@ -292,15 +317,19 @@
           </section>
 
           <section id="conversation-panel" class="side-column conversation-panel" hidden aria-label="一起看对话">
+            <header class="conversation-heading">
+              <span>对话区域</span>
+              <strong id="conversation-state"><span data-companion></span>的弹幕已开启</strong>
+            </header>
             <div id="conversation-list" class="conversation-list" aria-live="polite">
-              <p id="conversation-empty" class="conversation-empty">还没有新的对话</p>
+              <p id="conversation-empty" class="conversation-empty">这里会出现你和<span data-companion></span>本轮一起看的真实对话。</p>
             </div>
+            <p id="message-error" class="composer-error" role="alert" hidden></p>
             <form id="message-form" class="message-composer">
               <label class="visually-hidden" for="message-input">和<span data-companion></span>说点什么</label>
-              <input id="message-input" autocomplete="off" placeholder="说点什么..." disabled>
-              <button id="send-button" type="submit" disabled aria-label="发送消息" title="发送消息">↑</button>
+              <input id="message-input" autocomplete="off" disabled>
+              <button id="send-button" type="submit" disabled>发送</button>
             </form>
-            <p id="message-error" class="composer-error" role="alert" hidden></p>
           </section>
         </main>
       </section>

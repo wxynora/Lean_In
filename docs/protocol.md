@@ -117,7 +117,7 @@ For local media:
 ```json
 {
   "window_id": "my-product:watch",
-  "companion": { "id": "companion", "name": "Companion" },
+  "companion": { "id": "companion", "name": "{assistant}" },
   "media": { "...": "see Media Descriptor" },
   "mode": { "...": "see Mode" }
 }

@@ -29,7 +29,7 @@ globalThis.TogetherWatchConfig = {
   gatewayBaseUrl: "https://gateway.example.com",
   watchApiBasePath: "/miniapp-api/watch",
   windowId: "my-product:watch",
-  companion: { id: "companion", name: "Companion" },
+  companion: { id: "companion", name: "{assistant}" },
   heartbeatIntervalMs: 30_000,
   playbackSyncIntervalMs: 2_000,
   statusPollIntervalMs: 2_000,
@@ -180,7 +180,7 @@ window.dispatchEvent(new CustomEvent("togetherwatch:message", {
   detail: {
     session_id: "watch_...",
     role: "assistant",
-    speaker: "Companion",
+    speaker: "{assistant}",
     text: "...",
   },
 }));
@@ -215,9 +215,12 @@ locally dismissible cover above the picture. The bypass applies to that risk eve
 
 ## Session End and Failure Recovery
 
-All explicit exits call `DELETE /sessions/{id}` before returning to setup. `pagehide` also attempts
-to end the session. If a browser process is killed or the network disappears before DELETE arrives,
-heartbeats stop and the independent server lease must end the session and cancel new work.
+The player top-bar back action, the return-to-setup menu action, and browser/system history back all
+call `DELETE /sessions/{id}` before returning to setup. Switching parts also ends the old session
+before creating the next one. The setup-page back action is handed to the embedding host through
+`togetherwatch:back`. `pagehide` also attempts to end an active session. If a browser process is
+killed or the network disappears before DELETE arrives, heartbeats stop and the independent server
+lease must end the session and cancel new work.
 
 The server remains responsible for atomic queued/running cancellation and temporary sample cleanup;
 the browser lease is not a substitute for that transaction.

@@ -224,7 +224,7 @@ The original file path is never sent. `local_asset_id` is random for the selecte
 ```json
 {
   "window_id": "together-watch:web",
-  "companion": { "id": "companion", "name": "Companion" },
+  "companion": { "id": "companion", "name": "{assistant}" },
   "media": {
     "id": "local:71da7cb4-95d1-4ee0-a4ac-dc2d77e9af65",
     "source": "local_file",

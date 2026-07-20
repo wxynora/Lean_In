@@ -18,6 +18,12 @@ import {
   parseBoundaryInput,
   titleFromFileName,
 } from "./lib/media.js";
+import {
+  createConversationFollowState,
+  formatMessageTimestamp,
+  noteConversationMessage,
+  pauseConversationFollow,
+} from "./lib/conversation.js";
 import { PlaybackTimeline, snapshotFromVideo } from "./lib/timeline.js";
 
 
@@ -66,6 +72,10 @@ const state = {
   bypassedRisks: new Set(),
   ignoreNextPopState: false,
   analysisCost: createAnalysisCostAccumulator(),
+  conversationMessages: new Map(),
+  conversationFollow: createConversationFollowState(),
+  ignoreConversationScroll: false,
+  fallbackStreamMessageId: "",
 };
 
 let analysisCostDialogDestination = null;
@@ -401,6 +411,10 @@ function resetSessionState() {
   state.pendingDanmaku.clear();
   state.seenDanmaku.clear();
   state.bypassedRisks.clear();
+  state.conversationMessages.clear();
+  state.conversationFollow = createConversationFollowState();
+  state.ignoreConversationScroll = false;
+  state.fallbackStreamMessageId = "";
   $$("#conversation-list .chat-message").forEach((message) => message.remove());
   $("#conversation-empty").hidden = false;
   $("#message-input").value = "";
@@ -1019,20 +1033,56 @@ function updateConversationState(runActive = state.chatRunning) {
   $("#send-button").textContent = runActive ? "等他" : "发送";
 }
 
-function appendMessage(speaker, text, isUser = false) {
+function conversationMessageId(prefix = "message") {
+  const suffix = globalThis.crypto?.randomUUID?.()
+    || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${prefix}-${suffix}`;
+}
+
+function scrollConversationToBottom() {
+  const list = $("#conversation-list");
+  state.ignoreConversationScroll = true;
+  list.scrollTop = list.scrollHeight;
+  requestAnimationFrame(() => { state.ignoreConversationScroll = false; });
+}
+
+function upsertMessage({
+  speaker,
+  text,
+  isUser = false,
+  messageId = "",
+  createdAt = "",
+  append = false,
+}) {
   if (!String(text || "").trim()) return;
   $("#conversation-empty").hidden = true;
-  const fragment = $("#message-template").content.cloneNode(true);
-  const message = fragment.querySelector(".chat-message");
-  if (isUser) message.classList.add("is-user");
-  fragment.querySelector(".message-speaker").textContent = speaker;
-  fragment.querySelector(".message-body").textContent = text;
-  $("#conversation-list").append(fragment);
-  $("#conversation-list").scrollTop = $("#conversation-list").scrollHeight;
+  const resolvedId = String(messageId || conversationMessageId(isUser ? "viewer" : "assistant"));
+  let message = state.conversationMessages.get(resolvedId);
+  if (!message) {
+    const fragment = $("#message-template").content.cloneNode(true);
+    message = fragment.querySelector(".chat-message");
+    message.dataset.messageId = resolvedId;
+    if (isUser) message.classList.add("is-user");
+    fragment.querySelector(".message-speaker").textContent = speaker;
+    $("#conversation-list").append(fragment);
+    state.conversationMessages.set(resolvedId, message);
+  }
+  const body = message.querySelector(".message-body");
+  body.textContent = append ? `${body.textContent}${text}` : text;
+  const timestamp = formatMessageTimestamp(createdAt);
+  const time = message.querySelector(".message-time");
+  time.hidden = !timestamp;
+  if (timestamp) {
+    time.dateTime = timestamp.dateTime;
+    time.textContent = timestamp.label;
+  }
+  const follow = noteConversationMessage(state.conversationFollow, resolvedId);
+  if (follow.shouldScroll) requestAnimationFrame(scrollConversationToBottom);
 }
 
 async function sendMessage(text) {
   if (!bridge.canSendMessage()) throw new Error("请先配置 TogetherWatchHost.sendMessage");
+  const sentAt = new Date().toISOString();
   const snapshot = await captureSnapshot();
   if (!snapshot) throw new Error("当前读不到准确播放位置");
   await bridge.updatePlayback(state.session.session_id, snapshot);
@@ -1041,10 +1091,24 @@ async function sendMessage(text) {
     watch_session_id: state.session.session_id,
     watch_snapshot: snapshot,
   });
-  appendMessage("你", text, true);
-  if (result?.assistant_text) appendMessage(companionName, result.assistant_text, false);
+  upsertMessage({ speaker: "你", text, isUser: true, createdAt: sentAt });
+  if (result?.assistant_text) {
+    upsertMessage({
+      speaker: companionName,
+      text: result.assistant_text,
+      messageId: result.assistant_message_id,
+      createdAt: result.assistant_created_at,
+    });
+  }
   for (const message of result?.messages || []) {
-    if (message?.role === "assistant") appendMessage(companionName, message.content, false);
+    if (message?.role === "assistant") {
+      upsertMessage({
+        speaker: companionName,
+        text: message.content,
+        messageId: message.message_id || message.id,
+        createdAt: message.created_at || message.timestamp,
+      });
+    }
   }
 }
 
@@ -1371,6 +1435,12 @@ $("#fullscreen-button").addEventListener("click", async () => {
 $("#message-input").addEventListener("input", (event) => {
   $("#send-button").disabled = !event.target.value.trim();
 });
+$("#conversation-list").addEventListener("scroll", (event) => {
+  if (state.ignoreConversationScroll) return;
+  const list = event.currentTarget;
+  const distanceFromBottom = list.scrollHeight - list.scrollTop - list.clientHeight;
+  if (distanceFromBottom > 8) pauseConversationFollow(state.conversationFollow);
+});
 $("#message-form").addEventListener("submit", async (event) => {
   event.preventDefault();
   const input = $("#message-input");
@@ -1441,7 +1511,19 @@ window.addEventListener("togetherwatch:danmaku", (event) => acceptDanmaku(event.
 window.addEventListener("togetherwatch:message", (event) => {
   const detail = event.detail || {};
   if (detail.session_id && detail.session_id !== state.session?.session_id) return;
-  appendMessage(detail.speaker || companionName, detail.text, detail.role === "user");
+  if (detail.streaming && (detail.stream_start || !state.fallbackStreamMessageId)) {
+    state.fallbackStreamMessageId = conversationMessageId("assistant-stream");
+  }
+  const fallbackStreamId = detail.streaming ? state.fallbackStreamMessageId : "";
+  upsertMessage({
+    speaker: detail.speaker || companionName,
+    text: detail.text,
+    isUser: detail.role === "user",
+    messageId: detail.message_id || fallbackStreamId,
+    createdAt: detail.created_at || detail.timestamp,
+    append: detail.append === true,
+  });
+  if (detail.stream_end) state.fallbackStreamMessageId = "";
 });
 window.addEventListener("popstate", () => {
   if (state.ignoreNextPopState) {

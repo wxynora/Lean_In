@@ -1466,6 +1466,12 @@ label.file-picker:focus-within {
   overflow-wrap: anywhere;
 }
 
+.message-time {
+  color: var(--watch-pink);
+  font-size: 9px;
+  line-height: 1.2;
+}
+
 .chat-message.is-user .message-body {
   text-align: left;
 }
@@ -1475,14 +1481,14 @@ label.file-picker:focus-within {
   grid-template-columns: minmax(0, 1fr) 64px;
   gap: 8px;
   align-items: center;
-  padding: 8px 12px calc(8px + env(safe-area-inset-bottom));
+  padding: 4px 12px calc(4px + env(safe-area-inset-bottom));
   border-top: 1px solid var(--watch-border);
   background: var(--watch-bg);
 }
 
 .message-composer input {
   min-width: 0;
-  height: 52px;
+  height: 48px;
   padding: 0 16px;
   border: 1px solid var(--watch-border);
   border-radius: 24px;

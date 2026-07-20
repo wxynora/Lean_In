@@ -182,12 +182,21 @@ Streaming hosts can deliver later visible messages with:
 window.dispatchEvent(new CustomEvent("togetherwatch:message", {
   detail: {
     session_id: "watch_...",
+    message_id: "assistant-message-42",
     role: "assistant",
     speaker: "{assistant}",
     text: "...",
+    created_at: "2026-07-20T12:34:56Z",
   },
 }));
 ```
+
+For streaming output, keep the same `message_id` for every update. Send the complete accumulated text
+by default, or set `append: true` when `text` is a delta. If the host cannot provide an ID, set
+`streaming: true`, `stream_start: true` on the first event, and `stream_end: true` on the final event.
+A new message ID restores automatic bottom-following. If the viewer scrolls upward during the same
+stream, later updates do not pull the list back down. Timestamps are shown only when the host supplies
+a real `created_at` or `timestamp`; missing values are not fabricated.
 
 ## Timed Danmaku Events
 

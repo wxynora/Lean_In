@@ -93,7 +93,7 @@ class PromptBundleTests(unittest.TestCase):
         self.assertIn("ever-growing event log", known.system_prompt)
         self.assertIn("story_state.events must retain only causally active nodes", known.system_prompt)
         self.assertIn("PURPOSE=rolling", known.user_prompt)
-        self.assertEqual(known.response_schema["title"], "TogetherWatch analysis result")
+        self.assertEqual(known.response_schema["title"], "Lean In analysis result")
 
     def test_knowledge_prompt_contains_only_supplied_target_and_sources(self) -> None:
         prompt = build_knowledge_prompt(
@@ -109,7 +109,7 @@ class PromptBundleTests(unittest.TestCase):
 
         self.assertIn('TARGET={"title":"Example","year":2025}', prompt.user_prompt)
         self.assertIn("source-1", prompt.user_prompt)
-        self.assertEqual(prompt.response_schema["title"], "TogetherWatch knowledge card")
+        self.assertEqual(prompt.response_schema["title"], "Lean In knowledge card")
 
     def test_packaged_schemas_are_valid_json(self) -> None:
         root = Path(__file__).resolve().parents[1] / "src" / "together_watch" / "schemas"

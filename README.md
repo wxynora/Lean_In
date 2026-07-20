@@ -1,8 +1,11 @@
-# TogetherWatch
+# Lean In
 
-TogetherWatch is a platform-neutral co-watching runtime for AI companions. It keeps a chat model,
+Lean In is a platform-neutral co-watching runtime for AI companions. It keeps a chat model,
 media player, rolling plot analysis, timed danmaku, and optional high-intensity-scene protection on
 the same media clock without requiring Android, a specific player, or a specific model provider.
+
+The Python import path (`together_watch`) and Web host globals (`TogetherWatchHost` and
+`TogetherWatchConfig`) retain their original names for integration compatibility.
 
 The repository contains:
 
@@ -24,7 +27,7 @@ The repository contains:
 ## Why This Exists
 
 Ordinary chat knows when a message arrived, but it does not know what was on screen at that exact
-moment. Video also keeps moving while a model prepares its response. TogetherWatch solves that by
+moment. Video also keeps moving while a model prepares its response. Lean In solves that by
 separating four timeline regions:
 
 1. already watched plot that may be recalled for the current conversation;
@@ -65,7 +68,7 @@ Player / local media ----------> PlaybackAdapter         |
 Sparse frames / short audio ---> SamplingAdapter         |
                                |                         |
 Chat host ---------------------> ContextHostAdapter      |
-                               |   TogetherWatch core    |----> model request
+                               |      Lean In core       |----> model request
 Model action -------------------> Action validator        |
                                |                         |
 Risk + danmaku <---------------- ActionTransport         |
@@ -337,7 +340,7 @@ A client must never label `pending`, `degraded`, or `failed` analysis as protect
 
 ## Analysis, Knowledge, and Subtitle Providers
 
-TogetherWatch does not require one model vendor. A host can connect any provider that implements
+Lean In does not require one model vendor. A host can connect any provider that implements
 the adapter contracts. The package includes default Gemini-oriented prompts, strict analysis and
 knowledge-card schemas, prompt builders, and explicit provider configuration types. See
 [Provider and Prompt Integration](docs/providers.md).
@@ -509,6 +512,6 @@ The tests do not call network providers or require mobile SDKs.
 
 ## License
 
-TogetherWatch is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Personal,
+Lean In is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Personal,
 research, educational, and other uses permitted by that license are allowed. Commercial use is not
 permitted.

@@ -1,13 +1,13 @@
 # Privacy and Media Boundaries
 
-TogetherWatch is designed to analyze short media windows without turning a co-watching feature into
+Lean In is designed to analyze short media windows without turning a co-watching feature into
 a full-file upload service. This document defines the minimum boundary for any compatible host.
 
 ## Data Classes
 
 | Data | Typical location | Retention expectation |
 | --- | --- | --- |
-| Original local video | User device only | Controlled by the user; never uploaded by TogetherWatch. |
+| Original local video | User device only | Controlled by the user; never uploaded by Lean In. |
 | Local path, file handle, blob URL | Client process only | Destroy when the local session ends. |
 | Sparse frames / short audio | Client temporary memory, then host temporary storage | Delete after commit, cancellation, terminal failure, or session end. |
 | Subtitle text and timed cues | Host session storage | Session-scoped; expire with the watch cache. |
@@ -15,7 +15,7 @@ a full-file upload service. This document defines the minimum boundary for any c
 | Plot chunks and rolling story state | Host session storage | Short-lived; 24 hours is a practical resume TTL. |
 | Risk events and timed actions | Host session storage/client memory | Delete on epoch invalidation, session end, or TTL expiry. |
 | Playback snapshots | Host runtime storage | Keep only what synchronization and diagnostics require. |
-| Chat messages | Host chat system | Governed by the host, not by TogetherWatch core. |
+| Chat messages | Host chat system | Governed by the host, not by Lean In core. |
 | Provider credentials | Backend secret store | Never expose to the browser or public repository. |
 
 ## Local Media Boundary

@@ -3,13 +3,13 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "together-watch"
+name = "lean-in"
 version = "0.1.0"
 description = "Platform-neutral co-watching context and timeline core for AI companions"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-  { name = "TogetherWatch contributors" },
+  { name = "Lean In contributors" },
 ]
 keywords = ["co-watching", "ai-companion", "timeline", "multimodal"]
 classifiers = [
@@ -22,8 +22,8 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Repository = "https://github.com/wxynora/together-watch"
-Issues = "https://github.com/wxynora/together-watch/issues"
+Repository = "https://github.com/wxynora/Lean_In"
+Issues = "https://github.com/wxynora/Lean_In/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

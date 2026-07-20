@@ -1,6 +1,6 @@
 # Protocol v1
 
-TogetherWatch uses media time in integer milliseconds. JSON field names are stable public-contract
+Lean In uses media time in integer milliseconds. JSON field names are stable public-contract
 names; storage layout, HTTP framework, model tool syntax, and event transport remain host choices.
 
 The reference Web client uses `/miniapp-api/watch`, configurable through `web/config.js`. Examples

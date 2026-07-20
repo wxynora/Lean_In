@@ -48,7 +48,7 @@ export class WatchApiClient {
     const payload = await response.json().catch(() => null);
     if (!response.ok || payload?.ok === false) {
       throw new WatchApiError(
-        payload?.error || `TogetherWatch API HTTP ${response.status}`,
+        payload?.error || `Lean In API HTTP ${response.status}`,
         { status: response.status, code: payload?.code || "", payload },
       );
     }

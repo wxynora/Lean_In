@@ -1,6 +1,6 @@
 # Architecture
 
-TogetherWatch separates deterministic co-watching behavior from player, UI, model, provider, and
+Lean In separates deterministic co-watching behavior from player, UI, model, provider, and
 storage choices. The portable core defines what each component may see and when its output is still
 valid. A host application supplies the actual adapters.
 

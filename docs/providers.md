@@ -1,6 +1,6 @@
 # Provider and Prompt Integration
 
-TogetherWatch ships provider-neutral prompt bundles and adapter contracts. It does not require a
+Lean In ships provider-neutral prompt bundles and adapter contracts. It does not require a
 specific HTTP framework, model SDK, search API, database, or queue. A host owns transport and
 persistence while reusing the same evidence rules and structured outputs.
 
@@ -59,7 +59,7 @@ ordinary package data, so a downstream project can copy, review, translate, or r
 
 The Python builders are optional conveniences. A non-Python backend can copy the text templates and
 JSON schemas directly, replace the documented placeholders, and send the same bundle through its
-own model SDK. TogetherWatch does not require importing this package in the production service.
+own model SDK. Lean In does not require importing this package in the production service.
 
 ## Host Integration Sequence
 

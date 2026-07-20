@@ -1,4 +1,4 @@
-# TogetherWatch Web Client
+# Lean In Web Client
 
 This directory contains a functional, framework-free browser reference client. It is not a static
 mock: when connected to a compatible gateway it creates and ends real sessions, renews the client

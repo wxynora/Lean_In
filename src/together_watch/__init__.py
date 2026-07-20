@@ -66,6 +66,13 @@ from .prompts import (
     build_companion_context_prompt,
     build_knowledge_prompt,
 )
+from .prefetch import (
+    DEFAULT_INITIAL_READY_BUFFER_MS,
+    DEFAULT_PREFETCH_AHEAD_MS,
+    DEFAULT_ROLLING_BATCH_MS,
+    RollingPrefetchDecision,
+    plan_rolling_prefetch,
+)
 from .providers import (
     KnowledgeSearchConfig,
     KnowledgeSearchMode,
@@ -107,6 +114,9 @@ __all__ = [
     "ContextHostAdapter",
     "COMPANION_VISUAL_USER_LABEL",
     "DEFAULT_DANMAKU_MARKER",
+    "DEFAULT_INITIAL_READY_BUFFER_MS",
+    "DEFAULT_PREFETCH_AHEAD_MS",
+    "DEFAULT_ROLLING_BATCH_MS",
     "DanmakuAction",
     "DanmakuMarkerIntent",
     "FearMode",
@@ -127,6 +137,7 @@ __all__ = [
     "PromptBundle",
     "ProviderSettings",
     "RiskEvent",
+    "RollingPrefetchDecision",
     "RuntimeStore",
     "SampleManager",
     "SamplePlan",
@@ -161,6 +172,7 @@ __all__ = [
     "merge_analysis_usage",
     "normalize_provider_usage",
     "parse_openai_compatible_response",
+    "plan_rolling_prefetch",
     "reply_arrival_until_ms",
     "scheduled_future_until_ms",
     "split_danmaku_markers",

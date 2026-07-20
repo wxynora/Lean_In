@@ -603,8 +603,15 @@ provider operations, and before commit. Valid skip reasons are:
 - `lease_lost`.
 
 An active session must not be stopped solely because its lifetime count of analysis jobs reaches a
-fixed constant. Long media naturally needs more rolling batches. Hosts should bound work with the
-client lease, cancellation state, authorized timeline ranges, and an explicit cost policy instead.
+fixed constant. Long media naturally needs more rolling batches. A daily-cost threshold must not
+silently defer an active session either; expose real usage to the host and viewer. Hosts should bound
+work with the client lease, cancellation state, and authorized timeline ranges.
+
+The initial playback gate and rolling prefetch use separate coverage targets. The gate requires five
+minutes of reliable coverage. After unlock, schedule full batches toward the earlier of 30 minutes
+ahead or `content_end_ms`. At the high-water mark, wait until at least one full batch has been consumed
+before scheduling another. Only the final batch ending at `content_end_ms` may be shorter than the
+normal batch span; uploader-added post-credit padding is outside the authorized story range.
 
 ## Versioning and Compatibility
 

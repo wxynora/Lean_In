@@ -86,9 +86,10 @@ response rewrite the full watched history.
 - an OpenAI-compatible messages endpoint with image/audio parts and structured JSON output;
 - another multimodal model that can honor the same evidence boundary and schema.
 
-The analysis prompt bundle does not define `max_tokens`, `max_output_tokens`, or another explicit
-output ceiling. A host adapter should forward the schema and evidence without adding an implicit
-generation cap.
+The analysis and knowledge-card prompt bundles do not define `max_tokens`, `max_output_tokens`, or
+another explicit output ceiling. A host adapter should forward the schema and evidence without adding
+an implicit generation cap. Per-task retry policy is separate from output length; three attempts is a
+reasonable default for transient analysis-provider failures.
 
 The core does not inject viewer names, companion names, relationship prompts, chat archives, local
 paths, cookies, or credentials. Product-specific visible chat context belongs in

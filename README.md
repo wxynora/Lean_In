@@ -193,8 +193,9 @@ The canonical skip reasons are `session_ended`, `client_lease_expired`, `cancel_
 `stale_timeline`, and `lease_lost`. Billing usage is recorded only after a real provider response;
 an invalid structured result may still have billable usage even though no plot data is committed.
 Do not stop an otherwise active session because it reaches a fixed lifetime count of analysis jobs;
-long media naturally requires more rolling batches. Bound work through session leases, cancellation,
-authorized media ranges, and an explicit deployment cost policy instead.
+long media naturally requires more rolling batches. Do not silently defer work at a daily-cost
+threshold either; report real provider usage to the host and viewer. Bound execution through session
+leases, cancellation, and authorized media ranges.
 `WorkCoordinator` in `src/together_watch/lifecycle.py` provides a tested storage-neutral reference
 for lifecycle transitions.
 
@@ -355,6 +356,13 @@ Recommended analysis input for a rolling batch:
 - matching subtitles when available;
 - plot chunks from the immediately preceding analysis window;
 - a work-background card only when the selected mode requires one.
+
+The start gate should require five minutes of reliable plot coverage. After unlock, the backend may
+continue full rolling batches until it reaches the earlier of 30 minutes ahead or the detected normal
+content end. Once that high-water mark is reached, wait until one full batch has been consumed before
+refilling. Do not turn each small playhead change into a short provider call. A short final batch is
+valid only when it ends at the normal content boundary, not at uploader-added padding after credits.
+`plan_rolling_prefetch()` provides this storage-neutral decision.
 
 The analysis result should contain objective plot chunks, dialogue attribution, visual details,
 an optional current story background, timeline sections, and deterministic risk windows. Subtitles

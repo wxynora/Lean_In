@@ -602,6 +602,10 @@ provider operations, and before commit. Valid skip reasons are:
 - `stale_timeline`;
 - `lease_lost`.
 
+An active session must not be stopped solely because its lifetime count of analysis jobs reaches a
+fixed constant. Long media naturally needs more rolling batches. Hosts should bound work with the
+client lease, cancellation state, authorized timeline ranges, and an explicit cost policy instead.
+
 ## Versioning and Compatibility
 
 - Additive response fields are backward compatible.

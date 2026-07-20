@@ -41,7 +41,10 @@ class PromptBundleTests(unittest.TestCase):
         )
 
         self.assertIn("你是{assistant}，正在和{viewer}一起看{work}", prompt)
-        self.assertIn("不要和{viewer}照搬复述你看到的剧情内容", prompt)
+        self.assertIn(
+            "{viewer}正在和你看同一段，不需要和{viewer}照搬复述你看到的剧情内容以及逐项描述剧情画面。",
+            prompt,
+        )
         self.assertIn("剧情背景：", prompt)
         self.assertIn("当前剧情：", prompt)
         self.assertIn("与{viewer}说的相关的剧情：", prompt)

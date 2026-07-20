@@ -12,7 +12,7 @@ a full-file upload service. This document defines the minimum boundary for any c
 | Sparse frames / short audio | Client temporary memory, then host temporary storage | Delete after commit, cancellation, terminal failure, or session end. |
 | Subtitle text and timed cues | Host session storage | Session-scoped; expire with the watch cache. |
 | Work-background card | Host session/cache storage | Keep only as long as needed for the selected work/session policy. |
-| Plot chunks and rolling story state | Host session storage | Short-lived; 24 hours is a practical resume TTL. |
+| Plot chunks and optional story background | Host session storage | Short-lived; 24 hours is a practical resume TTL. |
 | Risk events and timed actions | Host session storage/client memory | Delete on epoch invalidation, session end, or TTL expiry. |
 | Playback snapshots | Host runtime storage | Keep only what synchronization and diagnostics require. |
 | Chat messages | Host chat system | Governed by the host, not by Lean In core. |
@@ -84,7 +84,7 @@ Analysis providers should receive only the material required for the current bat
 - authorized sparse frames;
 - an authorized short audio window when available;
 - matching subtitle cues;
-- prior rolling story state;
+- plot chunks from the immediately preceding analysis window;
 - an optional work-background card when the user selected that mode.
 
 Do not include private companion names, relationship prompts, unrelated chat history, global memory,

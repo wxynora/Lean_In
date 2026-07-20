@@ -45,7 +45,7 @@ time, message time, or a pre-generated reaction script.
 - A configurable reply-arrival window from 0 to 120 media seconds.
 - Session-only related-plot recall; no long-term chat or memory search.
 - Known-work and needs-background preparation modes selected explicitly before playback.
-- Optional work-background cards, subtitles, sparse visual context, and rolling story state.
+- Optional work-background cards, subtitles, sparse visual context, and session-scoped plot chunks.
 - Timed danmaku from native tool calls or hidden short markers, with shared validation against
   session, media, epoch, media time, and duplicate action IDs.
 - Confirmed risk windows for warning or client-side screen covering.
@@ -192,6 +192,9 @@ A worker must guard a claimed task at these boundaries:
 The canonical skip reasons are `session_ended`, `client_lease_expired`, `cancel_requested`,
 `stale_timeline`, and `lease_lost`. Billing usage is recorded only after a real provider response;
 an invalid structured result may still have billable usage even though no plot data is committed.
+Do not stop an otherwise active session because it reaches a fixed lifetime count of analysis jobs;
+long media naturally requires more rolling batches. Bound work through session leases, cancellation,
+authorized media ranges, and an explicit deployment cost policy instead.
 `WorkCoordinator` in `src/together_watch/lifecycle.py` provides a tested storage-neutral reference
 for lifecycle transitions.
 
@@ -350,14 +353,13 @@ Recommended analysis input for a rolling batch:
 - sparse frames from the authorized time window;
 - a short audio window when the client/source can export it;
 - matching subtitles when available;
-- the previous rolling story state;
+- plot chunks from the immediately preceding analysis window;
 - a work-background card only when the selected mode requires one.
 
 The analysis result should contain objective plot chunks, dialogue attribution, visual details,
-rolling story state, timeline sections, and deterministic risk windows. Subtitles assist
-understanding; actual image and audio evidence wins when subtitles are misaligned or belong to a
-different edit. Cumulative summaries and event state are compact rewrites rather than append-only
-logs, so resolved old process does not expand every later rolling response.
+an optional current story background, timeline sections, and deterministic risk windows. Subtitles
+assist understanding; actual image and audio evidence wins when subtitles are misaligned or belong
+to a different edit. Rolling calls do not maintain a cumulative plot summary or event state.
 
 Requesting schema-constrained output is recommended, but the receiver must not assume every provider
 returns one bare JSON string. `parse_openai_compatible_response()` accepts structured message fields,

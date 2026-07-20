@@ -231,8 +231,9 @@ The player top-bar back action, the return-to-setup menu action, and browser/sys
 call `DELETE /sessions/{id}` before returning to setup. Switching parts also ends the old session
 before creating the next one. Each successful DELETE response contributes its `analysis_cost` once,
 keyed by session ID. Part switches accumulate silently; normal return and end flows show the total
-plot-analysis cost across the parts watched in that run. Incomplete totals never present an unknown
-zero as free usage, and a failed DELETE does not invent a cost.
+analysis-provider cost across the parts watched in that run. Incomplete totals never present an unknown
+zero as free usage. Finished calls without provider pricing are also shown as unpriced rather than
+free, and a failed DELETE does not invent a cost.
 
 The setup-page back action is handed to the embedding host through `togetherwatch:back`. `pagehide`
 only makes a best-effort DELETE call and never opens the cost dialog. If a browser process is killed

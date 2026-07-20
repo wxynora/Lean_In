@@ -75,18 +75,41 @@ class WorkCoordinatorTest(unittest.TestCase):
             now_ms=2_000,
         )
         claimed = self.coordinator.claim_next(now_ms=2_000)
+        recorded = self.coordinator.record_provider_usage(
+            item.work_id,
+            claimed.lease_token,
+            event_key="analysis:1:provider",
+            usage={
+                "cost_usd": 1.0,
+                "provider_calls": 1,
+                "priced_calls": 1,
+            },
+        )
+        repeated = self.coordinator.record_provider_usage(
+            item.work_id,
+            claimed.lease_token,
+            event_key="analysis:1:provider",
+            usage={
+                "cost_usd": 1.0,
+                "provider_calls": 1,
+                "priced_calls": 1,
+            },
+        )
         self.coordinator.end_session("watch-demo")
 
         applied, reason = self.coordinator.complete_work(
             item.work_id,
             claimed.lease_token,
             now_ms=3_000,
-            usage={"cost_usd": 1.0},
+            usage={},
         )
 
+        self.assertTrue(recorded)
+        self.assertFalse(repeated)
         self.assertFalse(applied)
         self.assertEqual(reason, "cancel_requested")
-        self.assertEqual(item.usage, {})
+        self.assertEqual(item.usage["provider_calls"], 1)
+        self.assertEqual(item.usage["cost_usd"], 1.0)
 
     def test_wrong_or_reused_worker_lease_cannot_mutate_work(self) -> None:
         item = self.coordinator.enqueue_work(
@@ -96,6 +119,14 @@ class WorkCoordinatorTest(unittest.TestCase):
             now_ms=2_000,
         )
         claimed = self.coordinator.claim_next(now_ms=2_000)
+
+        with self.assertRaisesRegex(LifecycleError, "lease_lost"):
+            self.coordinator.record_provider_usage(
+                item.work_id,
+                "another-worker",
+                event_key="analysis:1:provider",
+                usage={"cost_usd": 9.0},
+            )
 
         applied, reason = self.coordinator.complete_work(
             item.work_id,
@@ -119,7 +150,9 @@ class WorkCoordinatorTest(unittest.TestCase):
         self.assertTrue(applied)
         self.assertEqual(reason, "")
         self.assertEqual(item.status, WorkStatus.DONE)
-        self.assertEqual(item.usage, {"cost_usd": 1.0})
+        self.assertEqual(item.usage["cost_usd"], 1.0)
+        self.assertEqual(item.usage["provider_calls"], 1)
+        self.assertEqual(item.usage["priced_calls"], 1)
 
         applied, reason = self.coordinator.complete_work(
             item.work_id,
@@ -130,7 +163,8 @@ class WorkCoordinatorTest(unittest.TestCase):
         self.assertFalse(applied)
         self.assertEqual(reason, "lease_lost")
         self.assertEqual(item.status, WorkStatus.DONE)
-        self.assertEqual(item.usage, {"cost_usd": 1.0})
+        self.assertEqual(item.usage["cost_usd"], 1.0)
+        self.assertEqual(item.usage["provider_calls"], 1)
 
     def test_seek_invalidates_only_epoch_sensitive_work(self) -> None:
         rolling = self.coordinator.enqueue_work(

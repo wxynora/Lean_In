@@ -24,8 +24,10 @@ from .context import build_context_envelope
 from .core import WatchCore, WatchCoreError
 from .costs import (
     ANALYSIS_MODEL_PURPOSES,
+    SESSION_COST_PURPOSES,
     AnalysisCostSummary,
     merge_analysis_usage,
+    record_analysis_usage_event,
     summarize_analysis_cost,
 )
 from .lifecycle import (
@@ -96,6 +98,9 @@ from .subtitles import (
 from .timeline import (
     MAX_FUTURE_WINDOW_MS,
     TimelineTracker,
+    advance_through_cached_intervals,
+    cached_interval_at,
+    merge_cached_intervals,
     reply_arrival_until_ms,
     scheduled_future_until_ms,
 )
@@ -104,6 +109,7 @@ __all__ = [
     "ActionTransport",
     "ActionValidation",
     "ANALYSIS_MODEL_PURPOSES",
+    "SESSION_COST_PURPOSES",
     "AnalysisProvider",
     "AnalysisCostSummary",
     "AudioSelection",
@@ -166,14 +172,18 @@ __all__ = [
     "build_knowledge_prompt",
     "build_knowledge_search_query",
     "create_danmaku_action",
+    "advance_through_cached_intervals",
+    "cached_interval_at",
     "deduplicate_subtitle_candidates",
     "evaluate_start_gate",
     "extract_structured_object",
     "merge_analysis_usage",
+    "merge_cached_intervals",
     "normalize_provider_usage",
     "parse_openai_compatible_response",
     "plan_rolling_prefetch",
     "reply_arrival_until_ms",
+    "record_analysis_usage_event",
     "scheduled_future_until_ms",
     "split_danmaku_markers",
     "stable_action_id",

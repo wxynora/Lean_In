@@ -10,6 +10,7 @@ from together_watch import (
     LocalPlaybackCapabilities,
     MediaDescriptor,
     PlaybackSnapshot,
+    PlotChunk,
     RiskEvent,
     SessionMode,
     SubtitleSelection,
@@ -62,6 +63,30 @@ class WatchCoreTest(unittest.TestCase):
                 media=media(),
                 mode=SessionMode(knowledge_mode=KnowledgeMode.KNOWN),
                 capabilities=ClientCapabilities(playback_snapshot=False),
+            )
+
+    def test_session_creation_is_idempotent_for_one_request_key(self) -> None:
+        capabilities = ClientCapabilities(playback_snapshot=True)
+        first = self.core.create_session(
+            media=media(),
+            mode=SessionMode(knowledge_mode=KnowledgeMode.KNOWN),
+            capabilities=capabilities,
+            idempotency_key="create-request-1",
+        )
+        repeated = self.core.create_session(
+            media=media(),
+            mode=SessionMode(knowledge_mode=KnowledgeMode.KNOWN),
+            capabilities=capabilities,
+            idempotency_key="create-request-1",
+        )
+
+        self.assertIs(repeated, first)
+        with self.assertRaisesRegex(WatchCoreError, "different session data"):
+            self.core.create_session(
+                media=media(),
+                mode=SessionMode(knowledge_mode=KnowledgeMode.NEEDS_SUMMARY),
+                capabilities=capabilities,
+                idempotency_key="create-request-1",
             )
 
     def test_stale_snapshot_does_not_replace_current_session_state(self) -> None:
@@ -149,6 +174,65 @@ class WatchCoreTest(unittest.TestCase):
         result = self.core.upcoming_risks(session.session_id)
 
         self.assertEqual(result, (current,))
+
+    def test_seek_reuses_completed_media_time_results_and_coverage(self) -> None:
+        session = self.create_session()
+        self.core.start_session(session.session_id)
+        self.core.apply_snapshot(
+            session.session_id,
+            snapshot(epoch=0, seq=1, playhead_ms=30_000),
+        )
+        self.core.add_plot_chunks(
+            session.session_id,
+            [
+                PlotChunk(
+                    chunk_id="plot-paid",
+                    session_id=session.session_id,
+                    timeline_epoch=0,
+                    start_ms=20_000,
+                    end_ms=120_000,
+                    summary="This range was already analyzed.",
+                )
+            ],
+        )
+        self.core.add_risk_events(
+            session.session_id,
+            [
+                RiskEvent(
+                    risk_id="risk-paid",
+                    session_id=session.session_id,
+                    timeline_epoch=0,
+                    warn_at_ms=70_000,
+                    start_ms=75_000,
+                    end_ms=80_000,
+                    severity=0.8,
+                )
+            ],
+        )
+        self.core.record_analysis_coverage(
+            session.session_id,
+            start_ms=0,
+            end_ms=140_000,
+        )
+
+        applied = self.core.apply_snapshot(
+            session.session_id,
+            snapshot(epoch=1, seq=1, playhead_ms=30_000),
+        )
+        context = self.core.build_context(session.session_id)
+        risks = self.core.upcoming_risks(session.session_id)
+
+        self.assertTrue(applied.applied)
+        self.assertEqual(
+            self.core.reusable_coverage_at(session.session_id, position_ms=30_000),
+            (0, 140_000),
+        )
+        self.assertEqual(
+            self.core.next_uncovered_ms(session.session_id, position_ms=30_000),
+            140_000,
+        )
+        self.assertEqual(context.current_chunks[0].summary, "This range was already analyzed.")
+        self.assertEqual(risks[0].timeline_epoch, 1)
 
 
 class ClientCapabilitiesTest(unittest.TestCase):

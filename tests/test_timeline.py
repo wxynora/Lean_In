@@ -5,6 +5,9 @@ import unittest
 from together_watch import (
     PlaybackSnapshot,
     TimelineTracker,
+    advance_through_cached_intervals,
+    cached_interval_at,
+    merge_cached_intervals,
     reply_arrival_until_ms,
 )
 
@@ -31,6 +34,13 @@ def snapshot(
 
 
 class TimelineTrackerTest(unittest.TestCase):
+    def test_cached_media_intervals_survive_epoch_changes(self) -> None:
+        merged = merge_cached_intervals(((30_000, 100_000), (100_500, 170_000)))
+
+        self.assertEqual(merged, ((30_000, 170_000),))
+        self.assertEqual(cached_interval_at(merged, 80_000), (30_000, 170_000))
+        self.assertEqual(advance_through_cached_intervals(merged, 80_000), 170_000)
+
     def test_rejects_non_monotonic_sequence_in_same_epoch(self) -> None:
         tracker = TimelineTracker("demo:episode-1")
         self.assertTrue(tracker.apply(snapshot(snapshot_seq=2)).applied)

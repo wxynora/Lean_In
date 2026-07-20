@@ -88,8 +88,14 @@ Every request is tied to four values:
 4. `snapshot_seq`: a monotonically increasing snapshot number inside an epoch.
 
 `snapshot_seq` prevents stale network updates from moving playback backwards. `timeline_epoch`
-invalidates already queued analysis, sample plans, risk events, and danmaku after a seek or media
-change. Wall-clock time never replaces media time.
+invalidates already queued analysis, sample plans, delivery state, and danmaku after a seek or media
+change. Completed plot/risk results remain reusable media-time cache when media identity and revision
+are unchanged; they are re-associated with the new epoch before delivery. Wall-clock time never
+replaces media time.
+
+Approximate viewer corrections to intro/outro ranges are sampling references, not proof of exact
+boundaries. They can cancel or redirect unfinished sampling, but cannot delete completed results or
+advance analyzed coverage by themselves.
 
 For local files, `media_id` is `local:<local_asset_id>`. The random asset ID identifies the user's
 selection; `media_revision` detects that the selected file contents changed. Cache keys must include
@@ -203,7 +209,13 @@ Canonical skip reasons are `session_ended`, `client_lease_expired`, `cancel_requ
 
 If the provider call already completed when cancellation arrives, the host may have incurred provider
 cost, but it must still reject the stale result and avoid recording it as a committed analysis result.
-Usage accounting should be written only for provider calls that actually occurred.
+Usage accounting should be written only for provider calls that actually occurred, immediately after
+the provider response and before the post-call liveness check. Make provider-event writes idempotent
+so retries count distinct calls while duplicate completion handling does not count one call twice.
+
+The session ledger covers analysis, knowledge-card/search, and subtitle-provider calls. Track
+`complete` (no queued/running work) separately from `pricing_complete` (every real call supplied a
+price); an unpriced completed call must never be displayed as free.
 
 ## Preparation Modes
 

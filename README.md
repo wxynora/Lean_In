@@ -192,6 +192,9 @@ A worker must guard a claimed task at these boundaries:
 The canonical skip reasons are `session_ended`, `client_lease_expired`, `cancel_requested`,
 `stale_timeline`, and `lease_lost`. Billing usage is recorded only after a real provider response;
 an invalid structured result may still have billable usage even though no plot data is committed.
+Persist that usage before the post-call liveness check so an end/seek race cannot erase a call that
+already happened. Keep task completion and pricing completeness separate: a provider may finish a
+call without returning a USD price.
 Do not stop an otherwise active session because it reaches a fixed lifetime count of analysis jobs;
 long media naturally requires more rolling batches. Do not silently defer work at a daily-cost
 threshold either; report real provider usage to the host and viewer. Bound execution through session
@@ -212,7 +215,7 @@ Change it with `watchApiBasePath` in `web/config.js`.
 | Method | Route | Purpose |
 | --- | --- | --- |
 | `GET` | `/sessions` | List active/recent sessions for a window. |
-| `POST` | `/sessions` | Create a session after media capability detection. |
+| `POST` | `/sessions` | Idempotently create a session after media capability detection. |
 | `GET` | `/sessions/{id}/status` | Read preparation, playback, analysis, sample plan, risks, and start gate. |
 | `POST` | `/sessions/{id}/heartbeat` | Renew the independent client lease. |
 | `PUT` | `/sessions/{id}/playback` | Apply an authoritative player snapshot. |
@@ -341,6 +344,12 @@ Fear mode uses the same initial plot gate and additionally requires real risk co
 mode may expose the explicit unprotected continuation action; ordinary mode has no bypass.
 
 A client must never label `pending`, `degraded`, or `failed` analysis as protected.
+
+Completed analysis is a media-time cache, not disposable epoch output. A seek still invalidates
+queued jobs, open sample plans, pending actions, and stale delivery state, but a host should reuse
+completed plot/risk coverage when the media identity and local revision are unchanged. Approximate
+viewer corrections to intro/outro ranges are sampling references only: they may redirect unfinished
+sampling, but must not advance coverage by themselves or delete completed provider results.
 
 ## Analysis, Knowledge, and Subtitle Providers
 

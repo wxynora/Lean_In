@@ -5,6 +5,8 @@ from enum import Enum
 from threading import RLock
 from uuid import uuid4
 
+from .costs import merge_analysis_usage, record_analysis_usage_event
+
 
 class WorkStatus(str, Enum):
     QUEUED = "queued"
@@ -182,9 +184,30 @@ class WorkCoordinator:
                     item.lease_token = ""
                 return False, reason
             item.status = WorkStatus.DONE
-            item.usage = dict(usage)
+            item.usage = merge_analysis_usage(item.usage, usage)
             item.lease_token = ""
             return True, ""
+
+    def record_provider_usage(
+        self,
+        work_id: str,
+        lease_token: str,
+        *,
+        event_key: str,
+        usage: dict,
+    ) -> bool:
+        """Persist an actual provider call before checking session liveness again."""
+
+        with self._lock:
+            item = self.get_work(work_id)
+            if item.status != WorkStatus.RUNNING or item.lease_token != lease_token:
+                raise LifecycleError("lease_lost")
+            item.usage, recorded = record_analysis_usage_event(
+                item.usage,
+                event_key=event_key,
+                usage=usage,
+            )
+            return recorded
 
     def update_timeline(
         self,

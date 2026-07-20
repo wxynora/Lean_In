@@ -8,6 +8,49 @@ from .models import PlaybackSnapshot, SnapshotApplyResult
 MAX_FUTURE_WINDOW_MS = 120_000
 
 
+def merge_cached_intervals(
+    intervals: list[tuple[int, int]] | tuple[tuple[int, int], ...],
+) -> tuple[tuple[int, int], ...]:
+    """Normalize media-time coverage independently of timeline epochs."""
+
+    normalized = sorted(
+        (max(0, int(start_ms)), max(0, int(end_ms)))
+        for start_ms, end_ms in intervals
+        if int(end_ms) > int(start_ms)
+    )
+    merged: list[tuple[int, int]] = []
+    for start_ms, end_ms in normalized:
+        if merged and start_ms <= merged[-1][1] + 1000:
+            merged[-1] = (merged[-1][0], max(merged[-1][1], end_ms))
+        else:
+            merged.append((start_ms, end_ms))
+    return tuple(merged)
+
+
+def cached_interval_at(
+    intervals: list[tuple[int, int]] | tuple[tuple[int, int], ...],
+    position_ms: int,
+) -> tuple[int, int] | None:
+    position = max(0, int(position_ms))
+    for start_ms, end_ms in merge_cached_intervals(intervals):
+        if start_ms <= position <= end_ms:
+            return start_ms, end_ms
+    return None
+
+
+def advance_through_cached_intervals(
+    intervals: list[tuple[int, int]] | tuple[tuple[int, int], ...],
+    position_ms: int,
+) -> int:
+    position = max(0, int(position_ms))
+    for start_ms, end_ms in merge_cached_intervals(intervals):
+        if start_ms > position + 1000:
+            break
+        if start_ms <= position + 1000 and end_ms > position:
+            position = end_ms
+    return position
+
+
 @dataclass(slots=True)
 class TimelineTracker:
     media_id: str

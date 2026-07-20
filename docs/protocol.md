@@ -116,6 +116,7 @@ For local media:
 
 ```json
 {
+  "idempotency_key": "create-attempt-opaque-id",
   "window_id": "my-product:watch",
   "companion": { "id": "companion", "name": "{assistant}" },
   "media": { "...": "see Media Descriptor" },
@@ -124,7 +125,10 @@ For local media:
 ```
 
 The server validates the descriptor before creating provider jobs. Session creation establishes the
-initial independent client lease. A typical response is:
+initial independent client lease. The client should send a stable `idempotency_key` for one create
+attempt. Repeating the same key with the same media, mode, and capabilities returns the existing
+active session; reusing it with different data is rejected. The uniqueness check and insert must be
+one transaction so a timeout/retry cannot create two preparation pipelines. A typical response is:
 
 ```json
 {
@@ -134,7 +138,8 @@ initial independent client lease. A typical response is:
     "window_id": "my-product:watch",
     "media": { "id": "local:...", "source": "local_file", "title": "Example Movie" },
     "mode": { "knowledge_mode": "needs_summary" },
-    "state": "preparing"
+    "state": "preparing",
+    "create_reused": false
   }
 }
 ```
@@ -198,9 +203,19 @@ Rules:
 - `playhead_ms` cannot exceed `duration_ms`.
 - `playback_rate` is between 0.25 and 4.0.
 - `snapshot_seq` strictly increases inside one epoch.
-- A newer epoch invalidates pending old-epoch jobs, plans, actions, and risks.
+- A newer epoch invalidates pending old-epoch jobs, plans, actions, and delivery state.
 - An older epoch or non-increasing sequence is ignored/rejected, never applied.
 - `captured_at` describes when the player snapshot was captured; it does not replace media time.
+
+Completed plot chunks, confirmed risks, and coverage may be reused across epochs when `media_id`
+and, for local media, `media_revision` are unchanged. Re-associate those rows with the new epoch
+before exposing them; never expose old-epoch actions directly. The scheduler begins after reusable
+cached coverage instead of paying to analyze the same media interval again.
+
+Viewer-supplied timeline corrections are approximate sampling references. Replacing such references
+may cancel unfinished sampling for the affected epoch, but must not delete completed plot chunks,
+risks, checkpoints, usage, or coverage. A reference alone never proves that an interval was analyzed
+and therefore cannot advance `covered_until_ms`.
 
 For a chat message, capture a fresh snapshot in the same user action and send it with
 `watch_session_id`. Do not reuse the last periodic heartbeat snapshot.
@@ -448,19 +463,37 @@ The successful response includes the analysis-model cost reported for this sessi
     "currency": "USD",
     "amount_usd": 0.0124,
     "complete": true,
+    "pricing_complete": true,
     "provider_calls": 6,
     "priced_calls": 6,
+    "unpriced_calls": 0,
     "pending_jobs": 0,
     "input_tokens": 18200,
-    "output_tokens": 3100
+    "output_tokens": 3100,
+    "breakdown": {
+      "rolling": {
+        "amount_usd": 0.0124,
+        "provider_calls": 6,
+        "priced_calls": 6,
+        "unpriced_calls": 0,
+        "input_tokens": 18200,
+        "output_tokens": 3100
+      }
+    }
   }
 }
 ```
 
-This total includes only `identify`, `timeline_prepass`, and `rolling` analysis-provider calls.
-Knowledge-card/search/subtitle costs and local fingerprint reuse are excluded. `complete=false`
-means at least one real call did not return pricing or a job was still running when the session
-ended; clients must not present an incomplete zero as free usage.
+This ledger includes real provider calls for `identify`, `timeline_prepass`, `rolling`,
+`knowledge_card`, and `subtitle_lookup`. Local cache/fingerprint reuse has no provider call and adds
+no cost. `complete=false` means work is still queued/running. `pricing_complete=false` means at least
+one completed provider call did not return a USD price; `unpriced_calls` makes that gap explicit.
+Clients must not present an unpriced or incomplete zero as free usage.
+
+Record each provider event idempotently immediately after the response arrives, before checking
+whether the session ended or the epoch changed. A stale result is still rejected, but a real call is
+not erased from the ledger. Retries use distinct event keys, while replaying the same completion does
+not double count it.
 
 If the client cannot send DELETE, lease expiry performs the same abandonment cleanup. Worker startup
 must not revive a session whose lease is blank or expired.

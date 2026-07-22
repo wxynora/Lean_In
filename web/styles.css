@@ -1583,6 +1583,44 @@ label.file-picker:focus-within {
   grid-template-columns: 56px minmax(0, 1fr) 56px;
 }
 
+.ticket-edit-menu {
+  position: relative;
+  justify-self: end;
+}
+
+.ticket-edit-popover {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% - 2px);
+  right: 4px;
+  display: grid;
+  min-width: 104px;
+  padding: 5px;
+  border: 1px solid var(--watch-border-strong);
+  border-radius: 11px;
+  background: #1a1818;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.38);
+}
+
+.ticket-edit-popover button {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--watch-primary);
+  font: inherit;
+  font-size: 11px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ticket-edit-popover button:hover,
+.ticket-edit-popover button:focus-visible {
+  background: rgba(212, 155, 169, 0.12);
+  outline: none;
+}
+
 .ticket-folder-heading {
   display: grid;
   min-width: 0;
@@ -1609,20 +1647,89 @@ label.file-picker:focus-within {
 }
 
 .ticket-entry {
-  display: block;
+  position: relative;
+  display: grid;
   width: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 18px;
-  background: transparent;
-  cursor: pointer;
   text-align: left;
 }
 
-.ticket-entry:hover .ticket-card,
-.ticket-entry:focus-visible .ticket-card {
+.ticket-flip-card {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  padding: 0;
+  border: 0;
+  border-radius: 4cqw;
+  background: transparent;
+  cursor: pointer;
+  container-type: inline-size;
+  perspective: 300cqw;
+  text-align: left;
+}
+
+.ticket-flip-card:focus-visible {
+  outline: 2px solid rgba(212, 155, 169, 0.72);
+  outline-offset: 3px;
+}
+
+.ticket-flip-inner {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.ticket-flip-card.is-flipped .ticket-flip-inner {
+  transform: rotateY(180deg);
+}
+
+.ticket-face {
+  position: absolute !important;
+  inset: 0;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+
+.ticket-face-back {
+  transform: rotateY(180deg);
+}
+
+.ticket-flip-card:hover .ticket-face,
+.ticket-flip-card:focus-visible .ticket-face {
   border-color: rgba(212, 155, 169, 0.66);
-  transform: translateY(-1px);
+}
+
+.ticket-entry.is-delete-selected .ticket-face {
+  border-color: var(--watch-pink);
+  box-shadow: inset 0 0 0 0.25cqw rgba(212, 155, 169, 0.42);
+}
+
+.ticket-delete-marker {
+  position: absolute;
+  z-index: 8;
+  top: 2.5cqw;
+  right: 2.5cqw;
+  display: grid;
+  place-items: center;
+  width: 6cqw;
+  height: 6cqw;
+  border: 0.25cqw solid var(--watch-pink);
+  border-radius: 50%;
+  background: rgba(13, 13, 13, 0.84);
+  color: #0d0d0d;
+  font-size: 3.2cqw;
+  pointer-events: none;
+}
+
+.ticket-entry.is-delete-selected .ticket-delete-marker {
+  background: var(--watch-pink);
+}
+
+.ticket-flip-card.is-delete-mode .ticket-face button,
+.ticket-flip-card.is-delete-mode .ticket-avatar {
+  pointer-events: none;
 }
 
 .ticket-empty-state {
@@ -1671,10 +1778,10 @@ label.file-picker:focus-within {
   width: 100%;
   aspect-ratio: 2 / 1;
   overflow: hidden;
-  border: 1px solid rgba(212, 155, 169, 0.38);
-  border-radius: 18px;
+  border: 0.3cqw solid rgba(212, 155, 169, 0.38);
+  border-radius: 4cqw;
   background: linear-gradient(135deg, #2a2024 0%, #1a1818 52%, #171416 100%);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.26);
+  box-shadow: 0 3.5cqw 8.5cqw rgba(0, 0, 0, 0.26);
   transition: border-color 160ms ease, transform 160ms ease;
 }
 
@@ -1682,16 +1789,16 @@ label.file-picker:focus-within {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  gap: 8px;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 4cqw;
   min-width: 0;
-  padding: 14px 16px;
+  padding: 4.1cqw 4.5cqw;
   overflow: hidden;
 }
 
 .ticket-kicker-row {
   display: flex;
-  gap: 8px;
+  gap: 2cqw;
   align-items: center;
   justify-content: space-between;
   min-width: 0;
@@ -1699,34 +1806,43 @@ label.file-picker:focus-within {
 
 .ticket-kicker-row span {
   color: var(--watch-pink);
-  font-size: 8px;
+  font-size: 2.35cqw;
   font-weight: 650;
-  letter-spacing: 1.5px;
+  letter-spacing: 0.12cqw;
   white-space: nowrap;
 }
 
 .ticket-kicker-row time {
   color: var(--watch-muted);
-  font-size: 8px;
+  font-size: 2.15cqw;
   white-space: nowrap;
 }
 
 .ticket-people {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 3.4cqw;
 }
 
 .ticket-avatar {
   display: grid;
   place-items: center;
-  width: 38px;
-  height: 38px;
+  width: 11cqw;
+  height: 11cqw;
   overflow: hidden;
-  border: 1px solid rgba(212, 155, 169, 0.58);
+  border: 0.2cqw solid rgba(212, 155, 169, 0.58);
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.06);
   color: var(--watch-primary);
+}
+
+.ticket-avatar.is-editable {
+  cursor: pointer;
+}
+
+.ticket-avatar.is-editable:focus-visible {
+  outline: 2px solid var(--watch-pink);
+  outline-offset: 2px;
 }
 
 .ticket-avatar img {
@@ -1736,14 +1852,14 @@ label.file-picker:focus-within {
 }
 
 .ticket-avatar b {
-  font-size: 12px;
+  font-size: 3cqw;
   font-weight: 500;
 }
 
 .ticket-people em {
   color: var(--watch-pink);
   font-family: "Lean In Romantic", "Snell Roundhand", cursive;
-  font-size: 18px;
+  font-size: 4.6cqw;
   font-weight: 400;
 }
 
@@ -1752,7 +1868,7 @@ label.file-picker:focus-within {
   align-self: center;
   min-width: 0;
   color: var(--watch-primary);
-  font-size: 20px;
+  font-size: 4.8cqw;
   font-weight: 650;
   line-height: 1.25;
   overflow-wrap: anywhere;
@@ -1762,25 +1878,35 @@ label.file-picker:focus-within {
   z-index: 1;
   display: grid;
   min-width: 0;
-  gap: 3px;
+  align-self: end;
+  gap: 1.2cqw;
 }
 
 .ticket-work-title {
   overflow: hidden;
   color: var(--watch-secondary);
-  font-size: 10px;
+  font-size: 2.35cqw;
   line-height: 1.35;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.ticket-part-label {
-  overflow: hidden;
-  color: var(--watch-muted);
-  font-size: 8px;
+.ticket-scene {
+  display: flex;
+  gap: 1.9cqw;
+  align-items: center;
+  font-size: 1.95cqw;
   line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+.ticket-scene b {
+  color: var(--watch-pink);
+  font-weight: 550;
+}
+
+.ticket-scene time {
+  color: var(--watch-muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .ticket-script {
@@ -1792,7 +1918,7 @@ label.file-picker:focus-within {
   gap: 0;
   color: rgba(212, 155, 169, 0.075);
   font-family: "Lean In Romantic", "Snell Roundhand", cursive;
-  font-size: clamp(22px, 6.5vw, 34px);
+  font-size: 8cqw;
   line-height: 0.82;
   white-space: nowrap;
   transform: translate(-50%, -50%) rotate(-90deg);
@@ -1801,77 +1927,122 @@ label.file-picker:focus-within {
 }
 
 .ticket-script span:last-child {
-  margin-left: 18px;
+  margin-left: 4.2cqw;
 }
 
 .ticket-stub {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-rows: auto 1fr auto;
-  justify-items: center;
-  gap: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   min-width: 0;
-  padding: 14px 8px;
+  padding: 4cqw 2cqw;
   background: rgba(212, 155, 169, 0.08);
   text-align: center;
 }
 
 .ticket-stub > strong {
   color: var(--watch-pink);
-  font-size: 10px;
+  font-size: 3cqw;
   font-weight: 550;
+  line-height: 1;
 }
 
-.ticket-stub > div {
+.ticket-seat-block {
   display: grid;
-  align-content: center;
-  gap: 5px;
+  justify-items: center;
+  gap: 1.35cqw;
+  margin-top: 2.9cqw;
 }
 
-.ticket-stub span {
+.ticket-seat-block span {
   color: var(--watch-primary);
-  font-size: 11px;
+  font-size: 2.6cqw;
+  font-weight: 550;
+  line-height: 1;
+  white-space: nowrap;
 }
 
-.ticket-stub small {
+.ticket-seat-block small,
+.ticket-number {
   color: var(--watch-muted);
-  font-size: 7px;
+  font-size: 1.8cqw;
 }
 
-.ticket-stub time {
+.ticket-stub-rule {
+  width: 72%;
+  height: 0.18cqw;
+  flex: 0 0 auto;
+  background: rgba(212, 155, 169, 0.32);
+}
+
+.ticket-stub-rule:nth-of-type(1) {
+  margin-top: 1.5cqw;
+}
+
+.ticket-stub-rule:nth-of-type(2) {
+  margin-top: 3.4cqw;
+}
+
+.ticket-number {
+  margin-top: 2.7cqw;
+  letter-spacing: 0.09cqw;
+  white-space: nowrap;
+}
+
+.ticket-check-copy {
+  margin-top: auto;
   color: var(--watch-secondary);
-  font-size: 9px;
+  font-size: 2cqw;
 }
 
 .ticket-divider {
   position: absolute;
   z-index: 2;
-  top: 8px;
-  bottom: 8px;
+  top: 1.4cqw;
+  bottom: 1.4cqw;
   left: 77%;
-  border-left: 1px dashed rgba(212, 155, 169, 0.42);
-  transform: translateX(-0.5px);
+  border-left: 0.18cqw dashed rgba(212, 155, 169, 0.42);
+  transform: translateX(-0.09cqw);
 }
 
 .ticket-notch {
   position: absolute;
   z-index: 3;
   left: 77%;
-  width: 16px;
-  height: 16px;
-  border: 1px solid rgba(212, 155, 169, 0.3);
+  width: 5cqw;
+  height: 5cqw;
+  border: 0;
   border-radius: 50%;
-  background: var(--watch-bg);
+  background: #000;
+  box-shadow: none;
   transform: translate(-50%, -50%);
+}
+
+.ticket-notch::after {
+  position: absolute;
+  right: 0;
+  left: 0;
+  height: 0.8cqw;
+  background: #000;
+  content: "";
 }
 
 .ticket-notch-top {
   top: 0;
 }
 
+.ticket-notch-top::after {
+  top: 50%;
+}
+
 .ticket-notch-bottom {
   top: 100%;
+}
+
+.ticket-notch-bottom::after {
+  bottom: 50%;
 }
 
 .toast {
@@ -1894,7 +2065,8 @@ label.file-picker:focus-within {
 .watch-end-choice-dialog,
 .capture-preview-dialog,
 .watch-end-dialog,
-.ticket-detail-dialog {
+.ticket-detail-dialog,
+.ticket-tool-dialog {
   width: min(calc(100% - 24px), 560px);
   max-width: none;
   padding: 0;
@@ -1908,14 +2080,16 @@ label.file-picker:focus-within {
 .watch-end-choice-dialog::backdrop,
 .capture-preview-dialog::backdrop,
 .watch-end-dialog::backdrop,
-.ticket-detail-dialog::backdrop {
+.ticket-detail-dialog::backdrop,
+.ticket-tool-dialog::backdrop {
   background: rgba(0, 0, 0, 0.72);
 }
 
 .watch-end-choice-surface,
 .capture-preview-surface,
 .watch-end-surface,
-.ticket-detail-surface {
+.ticket-detail-surface,
+.ticket-tool-surface {
   position: relative;
   display: grid;
   gap: 14px;
@@ -1998,20 +2172,167 @@ label.file-picker:focus-within {
 .watch-end-surface h2,
 .watch-end-surface h3,
 .watch-end-surface p,
-.ticket-detail-surface h2 {
+.ticket-detail-surface h2,
+.ticket-tool-surface h2 {
   margin: 0;
 }
 
 .watch-end-surface > h2,
-.ticket-detail-surface > h2 {
+.ticket-detail-surface > h2,
+.ticket-tool-surface > h2 {
   font-size: 18px;
   font-weight: 600;
   line-height: 1.45;
 }
 
 .watch-end-ticket,
-.ticket-detail-surface > div {
+.ticket-detail-surface > div,
+.ticket-tool-surface > div {
   min-width: 0;
+}
+
+.ticket-tool-dialog {
+  width: min(calc(100% - 28px), 480px);
+  background: #171515;
+}
+
+.ticket-tool-surface {
+  display: grid;
+  gap: 10px;
+  padding: 20px 18px 16px;
+}
+
+.ticket-tool-surface h2 {
+  color: var(--watch-primary);
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.ticket-image-editor-dialog {
+  width: min(calc(100% - 28px), 520px);
+}
+
+.ticket-image-editor-surface {
+  gap: 12px;
+}
+
+.ticket-image-editor-canvas {
+  display: block;
+  width: 100%;
+  aspect-ratio: 2 / 1;
+  border: 1px solid var(--watch-pink);
+  border-radius: 12px;
+  background: #000;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ticket-image-editor-canvas:active {
+  cursor: grabbing;
+}
+
+.ticket-image-editor-canvas.is-avatar {
+  width: min(78vw, 320px);
+  max-width: 100%;
+  margin-inline: auto;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+}
+
+.ticket-image-editor-hint {
+  margin: 0;
+  color: var(--watch-pink);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.ticket-image-editor-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.ticket-image-editor-actions button {
+  width: 100%;
+  min-height: 46px;
+}
+
+.ticket-sort-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 58px;
+  padding: 10px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--watch-primary);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ticket-sort-choice.is-selected {
+  background: rgba(212, 155, 169, 0.12);
+}
+
+.ticket-sort-choice span {
+  display: grid;
+  gap: 3px;
+}
+
+.ticket-sort-choice strong {
+  font-size: 11px;
+  font-weight: 550;
+}
+
+.ticket-sort-choice small {
+  color: var(--watch-muted);
+  font-size: 9px;
+}
+
+.ticket-sort-choice b {
+  color: var(--watch-pink);
+  font-size: 13px;
+}
+
+.ticket-frame-actions,
+.ticket-delete-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ticket-frame-actions {
+  flex-wrap: wrap;
+}
+
+.ticket-delete-bar {
+  position: sticky;
+  z-index: 30;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  min-height: 60px;
+  padding: 8px 20px calc(8px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--watch-border);
+  background: rgba(26, 24, 24, 0.98);
+}
+
+.ticket-delete-bar span {
+  color: var(--watch-muted);
+  font-size: 10px;
+}
+
+.ticket-delete-bar button {
+  min-height: 42px;
+}
+
+.ticket-delete-bar button:disabled {
+  color: var(--watch-muted);
+  cursor: default;
 }
 
 .analysis-cost-summary {
@@ -2118,7 +2439,7 @@ label.file-picker:focus-within {
 }
 
 .ticket-capture-heading small,
-#ticket-captures-state {
+.ticket-captures-state {
   color: var(--watch-muted);
   font-size: 9px;
 }
@@ -2175,6 +2496,18 @@ label.file-picker:focus-within {
   background: linear-gradient(135deg, #241b20, #1a1818, #131112);
 }
 
+.ticket-back-picture {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
 .ticket-back-image {
   width: 100%;
   height: 100%;
@@ -2188,33 +2521,141 @@ label.file-picker:focus-within {
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 8px;
+  gap: 2cqw;
   color: var(--watch-secondary);
 }
 
 .ticket-back-empty span {
   color: var(--watch-pink);
-  font-size: 9px;
-  letter-spacing: 1.5px;
+  font-size: 2.2cqw;
+  letter-spacing: 0.3cqw;
 }
 
 .ticket-back-empty strong {
-  font-size: 11px;
+  font-size: 2.7cqw;
   font-weight: 500;
 }
 
-.ticket-back-title {
+.ticket-back-footer {
   position: absolute;
+  z-index: 2;
   right: 0;
   bottom: 0;
   left: 0;
-  overflow: hidden;
-  padding: 9px 14px;
+  display: flex;
+  align-items: center;
+  gap: 2.5cqw;
+  width: 100%;
+  padding: 2.2cqw 3.5cqw;
+  border: 0;
   background: rgba(0, 0, 0, 0.52);
   color: #fff;
-  font-size: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ticket-back-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 2.5cqw;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.ticket-back-footer b {
+  color: var(--watch-pink);
+  font-size: 2.2cqw;
+  font-weight: 500;
+}
+
+/* Together Watch buttons use only the black/pink pair. */
+.icon-button,
+.stage-icon-button,
+.top-bar-link,
+.text-button,
+.secondary-button,
+.segment,
+.option-button,
+.choice-chip,
+.menu-popover button,
+.risk-warning button,
+.part-navigation button,
+.part-list button,
+.inline-part-selector button,
+.capture-frame-button,
+.ticket-edit-popover button,
+.ticket-sort-choice,
+.dialog-close-button {
+  border-color: var(--watch-pink);
+  background: var(--watch-bg);
+  color: var(--watch-pink);
+}
+
+.primary-button,
+.danger-text-button,
+.message-composer button,
+.segment.is-selected,
+.option-button.is-selected,
+.choice-chip.is-selected,
+.part-list button.is-selected,
+.inline-part-selector button.is-selected,
+.ticket-sort-choice.is-selected {
+  border-color: var(--watch-pink);
+  background: var(--watch-pink);
+  color: var(--watch-bg);
+}
+
+.current-part-button strong,
+.current-part-button small {
+  color: var(--watch-pink);
+}
+
+.ticket-sort-choice small {
+  color: rgba(212, 155, 169, 0.7);
+}
+
+.ticket-sort-choice.is-selected strong,
+.ticket-sort-choice.is-selected small,
+.ticket-sort-choice.is-selected b {
+  color: var(--watch-bg);
+}
+
+.ticket-edit-popover button:hover,
+.ticket-edit-popover button:focus-visible {
+  background: var(--watch-pink);
+  color: var(--watch-bg);
+}
+
+.icon-button:disabled,
+.stage-icon-button:disabled,
+.top-bar-link:disabled,
+.text-button:disabled,
+.secondary-button:disabled,
+.segment:disabled,
+.option-button:disabled,
+.choice-chip:disabled,
+.menu-popover button:disabled,
+.risk-warning button:disabled,
+.part-navigation button:disabled,
+.part-list button:disabled,
+.inline-part-selector button:disabled,
+.capture-frame-button:disabled,
+.ticket-edit-popover button:disabled,
+.ticket-sort-choice:disabled,
+.dialog-close-button:disabled,
+.primary-button:disabled,
+.danger-text-button:disabled,
+.message-composer button:disabled {
+  opacity: 0.38;
+}
+
+.primary-button:disabled,
+.danger-text-button:disabled,
+.message-composer button:disabled {
+  border-color: var(--watch-pink);
+  background: var(--watch-pink);
+  color: var(--watch-bg);
 }
 
 .video-stage:fullscreen,
@@ -2309,28 +2750,11 @@ label.file-picker:focus-within {
     padding-left: 14px;
   }
 
-  .ticket-body {
-    gap: 6px;
-    padding: 12px;
-  }
-
-  .ticket-avatar {
-    width: 34px;
-    height: 34px;
-  }
-
-  .ticket-duration {
-    font-size: 17px;
-  }
-
-  .ticket-stub {
-    padding: 12px 6px;
-  }
-
   .watch-end-choice-surface,
   .capture-preview-surface,
   .watch-end-surface,
-  .ticket-detail-surface {
+  .ticket-detail-surface,
+  .ticket-tool-surface {
     padding: 18px 14px 14px;
   }
 }

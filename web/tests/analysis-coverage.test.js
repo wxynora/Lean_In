@@ -26,5 +26,8 @@ test("analysis status states the actual prepared plot lead", () => {
   );
   assert.equal(analysisCoverageLabel("pending", 90_000, 100_000), "正在准备前方剧情");
   assert.equal(analysisCoverageLabel("failed", 300_000, 100_000), "剧情分析不可用");
-  assert.equal(analysisCoverageLabel("degraded", 300_000, 100_000), "剧情分析暂时降级");
+  assert.equal(
+    analysisCoverageLabel("degraded", 300_000, 100_000),
+    "已提前解析 3分20秒剧情 · 暂时降级",
+  );
 });

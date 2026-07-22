@@ -26,6 +26,10 @@ import {
 } from "./lib/conversation.js";
 import { PlaybackTimeline, snapshotFromVideo } from "./lib/timeline.js";
 import {
+  analysisDegradedReason,
+  shouldResumeDirectly,
+} from "./lib/watch-status.js";
+import {
   createTicketStore,
   createViewingDurationAccumulator,
   detachViewingDuration,
@@ -34,6 +38,7 @@ import {
   normalizeTicket,
   normalizeTicketCapture,
   observeViewingDuration,
+  sortTicketsByEndedAt,
   updateTicketAvatar,
 } from "./lib/tickets.js";
 
@@ -102,8 +107,12 @@ const state = {
   captureWasPlaying: false,
   captureBusy: false,
   selectedTicket: null,
-  ticketFlipped: false,
   ticketAssetRole: "",
+  ticketImageTarget: null,
+  ticketImageDraft: null,
+  ticketDeleteMode: false,
+  ticketDeleteSelection: new Set(),
+  ticketSortNewestFirst: true,
 };
 
 let watchEndDialogDestination = null;
@@ -270,6 +279,11 @@ function ticketDate(value) {
   };
 }
 
+function ticketNumber(value) {
+  const date = ticketDate(value).day.replaceAll(".", "");
+  return `NO. W-${date.slice(-4) || "0000"}`;
+}
+
 function avatarFallback(value, defaultValue) {
   const cleaned = String(value || "").replace(/[{}]/g, "").trim();
   return cleaned.slice(0, 1).toUpperCase() || defaultValue;
@@ -300,36 +314,62 @@ function fillTicketAvatar(root, selector, url, fallback, alt) {
     image.hidden = false;
     fallbackNode.hidden = true;
   }
+  return avatar;
 }
 
-function renderTicketCard(value) {
+function bindTicketAvatar(avatar, ticket, role) {
+  avatar.classList.add("is-editable");
+  avatar.tabIndex = 0;
+  avatar.setAttribute("role", "button");
+  avatar.setAttribute(
+    "aria-label",
+    role === "companion" ? `更换${ticket.companion.name}头像` : "更换我的头像",
+  );
+  const activate = (event) => {
+    event.stopPropagation();
+    pickTicketImage(ticket, role);
+  };
+  avatar.addEventListener("click", activate);
+  avatar.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    activate(event);
+  });
+}
+
+function renderTicketCard(value, { interactive = false } = {}) {
   const ticket = normalizeTicket(value);
   const card = $("#ticket-card-template").content.firstElementChild.cloneNode(true);
   const date = ticketDate(ticket.ended_at);
   card.querySelector(".ticket-date").textContent = date.day;
-  card.querySelector(".ticket-time").textContent = date.time;
+  card.querySelector(".ticket-scene-time").textContent = date.time;
+  card.querySelector(".ticket-number").textContent = ticketNumber(ticket.ended_at);
   card.querySelector(".ticket-duration").textContent = formatTicketDuration(
     ticket.played_duration_ms,
   );
   card.querySelector(".ticket-work-title").textContent = ticket.title;
-  fillTicketAvatar(
+  const companionAvatar = fillTicketAvatar(
     card,
     ".ticket-companion-avatar",
     ticket.companion.avatar_url,
     avatarFallback(ticket.companion.name, "A"),
     ticket.companion.name,
   );
-  fillTicketAvatar(
+  const viewerAvatar = fillTicketAvatar(
     card,
     ".ticket-viewer-avatar",
     ticket.viewer.avatar_url,
     avatarFallback(ticket.viewer.name, "我"),
     ticket.viewer.name,
   );
+  if (interactive) {
+    bindTicketAvatar(companionAvatar, ticket, "companion");
+    bindTicketAvatar(viewerAvatar, ticket, "viewer");
+  }
   return card;
 }
 
-function renderTicketBack(value) {
+function renderTicketBack(value, { interactive = false } = {}) {
   const ticket = normalizeTicket(value);
   const card = $("#ticket-back-template").content.firstElementChild.cloneNode(true);
   const imageUrl = ticket.local_back_image_url || ticket.server_back_frame_url;
@@ -340,6 +380,16 @@ function renderTicketBack(value) {
     card.querySelector(".ticket-back-empty").hidden = true;
   }
   card.querySelector(".ticket-back-title").textContent = ticket.title;
+  if (interactive) {
+    card.querySelector(".ticket-back-picture").addEventListener("click", (event) => {
+      event.stopPropagation();
+      openTicketFrameGallery(ticket);
+    });
+    card.querySelector(".ticket-back-footer").addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleTicket(ticket);
+    });
+  }
   return card;
 }
 
@@ -355,11 +405,16 @@ function saveAndSelectTicket(value) {
   return saved;
 }
 
-function renderTicketCapturePicker() {
-  const list = $("#ticket-captures-list");
+function activeTicketFrameDialog() {
+  return $("#ticket-frame-dialog");
+}
+
+function renderTicketCapturePicker(dialog = activeTicketFrameDialog()) {
+  if (!dialog) return;
+  const list = dialog.querySelector(".ticket-captures-list");
   list.replaceChildren();
   const ticket = state.selectedTicket;
-  $("#ticket-captures-state").textContent = state.ticketCapturesLoading
+  dialog.querySelector(".ticket-captures-state").textContent = state.ticketCapturesLoading
     ? "读取中…"
     : state.ticketCaptures.length
       ? `${state.ticketCaptures.length} 张`
@@ -380,31 +435,11 @@ function renderTicketCapturePicker() {
   }
 }
 
-function renderTicketDetail() {
-  if (!state.selectedTicket) return;
-  const ticket = normalizeTicket(state.selectedTicket);
-  state.selectedTicket = ticket;
-  $("#ticket-detail-title").textContent = state.ticketFlipped ? "票根背面" : "一起看的票根";
-  $("#ticket-detail-card").replaceChildren(
-    state.ticketFlipped ? renderTicketBack(ticket) : renderTicketCard(ticket),
-  );
-  $("#ticket-flip-hint").textContent = state.ticketFlipped
-    ? "点票面可翻回正面"
-    : "点票面可查看背面";
-  $("#ticket-flip-button").textContent = state.ticketFlipped ? "翻回正面" : "查看背面";
-  $("#ticket-front-actions").hidden = state.ticketFlipped;
-  $("#ticket-back-actions").hidden = !state.ticketFlipped;
-  $("#clear-ticket-back-image").hidden = !(
-    ticket.local_back_image_url || ticket.server_back_frame_url
-  );
-  if (state.ticketFlipped) renderTicketCapturePicker();
-}
-
 async function loadTicketCaptures(viewingId) {
   state.ticketCaptures = [];
   state.ticketCapturesLoading = true;
-  $("#ticket-captures-error").hidden = true;
-  $("#ticket-captures-state").textContent = "读取中…";
+  const errorNode = activeTicketFrameDialog()?.querySelector(".ticket-captures-error");
+  if (errorNode) errorNode.hidden = true;
   renderTicketCapturePicker();
   if (!viewingId) {
     state.ticketCapturesLoading = false;
@@ -417,8 +452,11 @@ async function loadTicketCaptures(viewingId) {
       .map(normalizeTicketCapture)
       .filter((frame) => frame.frame_id && frame.image_url);
   } catch (error) {
-    $("#ticket-captures-error").textContent = error.message || "自选画面读取失败";
-    $("#ticket-captures-error").hidden = false;
+    const currentError = activeTicketFrameDialog()?.querySelector(".ticket-captures-error");
+    if (currentError) {
+      currentError.textContent = error.message || "自选画面读取失败";
+      currentError.hidden = false;
+    }
   }
   state.ticketCapturesLoading = false;
   renderTicketCapturePicker();
@@ -436,23 +474,28 @@ function ticketFromFrameSelection(payload, frame = null) {
 
 async function selectTicketCapture(frame) {
   if (!state.selectedTicket?.viewing_id) return;
-  $("#ticket-captures-error").hidden = true;
+  const errorNode = activeTicketFrameDialog()?.querySelector(".ticket-captures-error");
+  if (errorNode) errorNode.hidden = true;
   try {
     const payload = await bridge.selectTicketFrameCapture(
       state.selectedTicket.viewing_id,
       frame.frame_id,
     );
     saveAndSelectTicket(ticketFromFrameSelection(payload, frame));
-    renderTicketDetail();
+    renderTicketFrameDialog();
   } catch (error) {
-    $("#ticket-captures-error").textContent = error.message || "票根背面选择失败";
-    $("#ticket-captures-error").hidden = false;
+    const currentError = activeTicketFrameDialog()?.querySelector(".ticket-captures-error");
+    if (currentError) {
+      currentError.textContent = error.message || "票根背面选择失败";
+      currentError.hidden = false;
+    }
   }
 }
 
 async function clearTicketBackImage() {
   if (!state.selectedTicket) return;
-  $("#ticket-captures-error").hidden = true;
+  const errorNode = activeTicketFrameDialog()?.querySelector(".ticket-captures-error");
+  if (errorNode) errorNode.hidden = true;
   try {
     let ticket = normalizeTicket({
       ...state.selectedTicket,
@@ -466,15 +509,19 @@ async function clearTicketBackImage() {
       if (serverTicket) ticket = normalizeTicket(serverTicket, ticket);
     }
     saveAndSelectTicket(ticket);
-    renderTicketDetail();
+    renderTicketFrameDialog();
   } catch (error) {
-    $("#ticket-captures-error").textContent = error.message || "票根背面清除失败";
-    $("#ticket-captures-error").hidden = false;
+    const currentError = activeTicketFrameDialog()?.querySelector(".ticket-captures-error");
+    if (currentError) {
+      currentError.textContent = error.message || "票根背面清除失败";
+      currentError.hidden = false;
+    }
   }
 }
 
-function pickTicketImage(role) {
-  if (!state.selectedTicket) return;
+function pickTicketImage(ticket, role) {
+  if (!ticket) return;
+  state.ticketImageTarget = normalizeTicket(ticket);
   state.ticketAssetRole = role;
   const input = $("#ticket-image-input");
   input.value = "";
@@ -490,40 +537,325 @@ function fileAsDataUrl(file) {
   });
 }
 
-function openTicketDetail(value) {
-  state.selectedTicket = normalizeTicket(value);
-  state.ticketFlipped = false;
+function clampTicketImageEditorOffset(draft, viewportWidth, viewportHeight) {
+  if (!draft?.image || !viewportWidth || !viewportHeight) return;
+  const baseScale = Math.max(
+    viewportWidth / draft.image.naturalWidth,
+    viewportHeight / draft.image.naturalHeight,
+  );
+  const scaledWidth = draft.image.naturalWidth * baseScale * draft.zoom;
+  const scaledHeight = draft.image.naturalHeight * baseScale * draft.zoom;
+  const maxX = Math.max(0, (scaledWidth - viewportWidth) / 2);
+  const maxY = Math.max(0, (scaledHeight - viewportHeight) / 2);
+  draft.offsetX = Math.max(-maxX, Math.min(maxX, draft.offsetX));
+  draft.offsetY = Math.max(-maxY, Math.min(maxY, draft.offsetY));
+}
+
+function drawTicketImageEditor() {
+  const draft = state.ticketImageDraft;
+  const canvas = $("#ticket-image-editor-canvas");
+  if (!draft?.image || !canvas) return;
+  const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+  clampTicketImageEditorOffset(draft, bounds.width, bounds.height);
+  const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+  const width = Math.round(bounds.width * pixelRatio);
+  const height = Math.round(bounds.height * pixelRatio);
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
+  const context = canvas.getContext("2d");
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, bounds.width, bounds.height);
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, bounds.width, bounds.height);
+  const scale = Math.max(
+    bounds.width / draft.image.naturalWidth,
+    bounds.height / draft.image.naturalHeight,
+  ) * draft.zoom;
+  const drawWidth = draft.image.naturalWidth * scale;
+  const drawHeight = draft.image.naturalHeight * scale;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    draft.image,
+    (bounds.width - drawWidth) / 2 + draft.offsetX,
+    (bounds.height - drawHeight) / 2 + draft.offsetY,
+    drawWidth,
+    drawHeight,
+  );
+}
+
+async function openTicketImageEditor(file, target, role) {
+  const imageUrl = await fileAsDataUrl(file);
+  const image = new Image();
+  await new Promise((resolve, reject) => {
+    image.addEventListener("load", resolve, { once: true });
+    image.addEventListener("error", () => reject(new Error("图片解码失败")), { once: true });
+    image.src = imageUrl;
+  });
+  state.ticketImageDraft = {
+    target: normalizeTicket(target),
+    role,
+    image,
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0,
+    pointers: new Map(),
+    lastCenter: null,
+    lastDistance: 0,
+  };
+  const canvas = $("#ticket-image-editor-canvas");
+  canvas.classList.toggle("is-avatar", role !== "back");
+  $("#ticket-image-editor-title").textContent = role === "back" ? "调整票根背面" : "调整头像";
+  const error = $("#ticket-image-editor-error");
+  error.textContent = "";
+  error.hidden = true;
+  const dialog = $("#ticket-image-editor-dialog");
+  if (!dialog.open) dialog.showModal();
+  requestAnimationFrame(drawTicketImageEditor);
+}
+
+function closeTicketImageEditor() {
+  const dialog = $("#ticket-image-editor-dialog");
+  if (dialog.open) dialog.close();
+  state.ticketImageDraft = null;
+  state.ticketAssetRole = "";
+  state.ticketImageTarget = null;
+}
+
+function confirmTicketImageEditor() {
+  const draft = state.ticketImageDraft;
+  const preview = $("#ticket-image-editor-canvas");
+  if (!draft?.image || !preview) return;
+  const previewBounds = preview.getBoundingClientRect();
+  const outputWidth = draft.role === "back" ? 1200 : 512;
+  const outputHeight = draft.role === "back" ? 600 : 512;
+  const output = document.createElement("canvas");
+  output.width = outputWidth;
+  output.height = outputHeight;
+  const context = output.getContext("2d");
+  context.fillStyle = "#000";
+  context.fillRect(0, 0, outputWidth, outputHeight);
+  const previewScale = Math.max(
+    previewBounds.width / draft.image.naturalWidth,
+    previewBounds.height / draft.image.naturalHeight,
+  ) * draft.zoom;
+  const outputScaleX = outputWidth / previewBounds.width;
+  const outputScaleY = outputHeight / previewBounds.height;
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  context.drawImage(
+    draft.image,
+    ((previewBounds.width - draft.image.naturalWidth * previewScale) / 2 + draft.offsetX) * outputScaleX,
+    ((previewBounds.height - draft.image.naturalHeight * previewScale) / 2 + draft.offsetY) * outputScaleY,
+    draft.image.naturalWidth * previewScale * outputScaleX,
+    draft.image.naturalHeight * previewScale * outputScaleY,
+  );
+  const imageUrl = output.toDataURL("image/jpeg", 0.92);
+  const updated = draft.role === "back"
+    ? normalizeTicket({ ...draft.target, local_back_image_url: imageUrl })
+    : updateTicketAvatar(draft.target, draft.role, imageUrl);
+  const saved = ticketStore.save(updated);
+  if (state.selectedTicket?.ticket_id === saved.ticket_id) state.selectedTicket = saved;
+  if (state.currentEndTicket?.ticket_id === saved.ticket_id) state.currentEndTicket = saved;
+  renderTicketFolder();
+  if (activeTicketFrameDialog().open) renderTicketFrameDialog();
+  closeTicketImageEditor();
+}
+
+function ticketEditorPointerCenter(pointers) {
+  const values = [...pointers.values()];
+  if (!values.length) return null;
+  return {
+    x: values.reduce((sum, point) => sum + point.x, 0) / values.length,
+    y: values.reduce((sum, point) => sum + point.y, 0) / values.length,
+  };
+}
+
+function ticketEditorPointerDistance(pointers) {
+  const values = [...pointers.values()];
+  if (values.length < 2) return 0;
+  return Math.hypot(values[0].x - values[1].x, values[0].y - values[1].y);
+}
+
+function resetTicketEditorGesture(draft) {
+  draft.lastCenter = ticketEditorPointerCenter(draft.pointers);
+  draft.lastDistance = ticketEditorPointerDistance(draft.pointers);
+}
+
+function renderTicketFrameDialog() {
+  const dialog = activeTicketFrameDialog();
+  const ticket = state.selectedTicket;
+  if (!dialog || !ticket) return;
+  dialog.querySelector(".clear-ticket-back-image").hidden = !(
+    ticket.local_back_image_url || ticket.server_back_frame_url
+  );
+  renderTicketCapturePicker(dialog);
+}
+
+function openTicketFrameGallery(value) {
+  const ticket = normalizeTicket(value);
+  state.selectedTicket = ticket;
   state.ticketCaptures = [];
-  renderTicketDetail();
-  $("#ticket-detail-dialog").showModal();
-  loadTicketCaptures(state.selectedTicket.viewing_id);
+  state.ticketCapturesLoading = false;
+  renderTicketFrameDialog();
+  const dialog = activeTicketFrameDialog();
+  if (!dialog.open) dialog.showModal();
+  loadTicketCaptures(ticket.viewing_id);
+}
+
+function closeTicketFrameGallery() {
+  const dialog = activeTicketFrameDialog();
+  if (dialog.open) dialog.close();
+}
+
+function toggleTicket(value) {
+  const ticket = normalizeTicket(value);
+  if (state.ticketDeleteMode) {
+    if (state.ticketDeleteSelection.has(ticket.ticket_id)) {
+      state.ticketDeleteSelection.delete(ticket.ticket_id);
+    } else {
+      state.ticketDeleteSelection.add(ticket.ticket_id);
+    }
+    renderTicketFolder();
+    return;
+  }
+  if (state.selectedTicket?.ticket_id === ticket.ticket_id) {
+    state.selectedTicket = null;
+    state.ticketCaptures = [];
+    state.ticketCapturesLoading = false;
+    renderTicketFolder();
+    return;
+  }
+  state.selectedTicket = ticket;
+  state.ticketCaptures = [];
+  state.ticketCapturesLoading = false;
+  renderTicketFolder();
+}
+
+function closeTicketEditPopover() {
+  $("#tickets-edit-popover").hidden = true;
+}
+
+function enterTicketDeleteMode() {
+  closeTicketEditPopover();
+  state.ticketDeleteMode = true;
+  state.ticketDeleteSelection.clear();
+  state.selectedTicket = null;
+  closeTicketFrameGallery();
+  renderTicketFolder();
+}
+
+function leaveTicketDeleteMode() {
+  state.ticketDeleteMode = false;
+  state.ticketDeleteSelection.clear();
+  renderTicketFolder();
+}
+
+function confirmTicketDelete() {
+  const selectedIds = [...state.ticketDeleteSelection];
+  if (!selectedIds.length) return;
+  for (const ticketId of selectedIds) ticketStore.remove(ticketId);
+  leaveTicketDeleteMode();
+  toast(`已删除 ${selectedIds.length} 张票根`);
+}
+
+function renderTicketSortDialog() {
+  const newest = state.ticketSortNewestFirst;
+  $("#ticket-sort-newest").classList.toggle("is-selected", newest);
+  $("#ticket-sort-newest").querySelector("b").textContent = newest ? "✓" : "";
+  $("#ticket-sort-oldest").classList.toggle("is-selected", !newest);
+  $("#ticket-sort-oldest").querySelector("b").textContent = newest ? "" : "✓";
+}
+
+function setTicketSort(newestFirst) {
+  state.ticketSortNewestFirst = Boolean(newestFirst);
+  renderTicketSortDialog();
+  $("#ticket-sort-dialog").close();
+  renderTicketFolder();
 }
 
 function renderTicketFolder() {
-  const tickets = ticketStore.list();
+  const tickets = sortTicketsByEndedAt(
+    ticketStore.list(),
+    state.ticketSortNewestFirst,
+  );
   $("#tickets-count").textContent = `${tickets.length} 张一起看的票根`;
   $("#tickets-empty").hidden = tickets.length > 0;
+  $("#tickets-edit-button").hidden = tickets.length === 0;
+  $("#tickets-edit-button").textContent = state.ticketDeleteMode ? "完成" : "编辑";
+  const deleteBar = $("#ticket-delete-bar");
+  deleteBar.hidden = !state.ticketDeleteMode || tickets.length === 0;
+  const deleteCount = state.ticketDeleteSelection.size;
+  $("#ticket-delete-selection").textContent = deleteCount
+    ? `已选择 ${deleteCount} 张票根`
+    : "选择要删除的票根";
+  $("#ticket-delete-confirm").textContent = deleteCount
+    ? `确认删除（${deleteCount}）`
+    : "确认删除";
+  $("#ticket-delete-confirm").disabled = deleteCount === 0;
   const list = $("#tickets-list");
   list.hidden = tickets.length === 0;
   list.replaceChildren();
   for (const ticket of tickets) {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "ticket-entry";
-    button.setAttribute("aria-label", `查看${ticket.title}的票根`);
-    button.append(renderTicketCard(ticket));
-    button.addEventListener("click", () => openTicketDetail(ticket));
-    list.append(button);
+    const flipped = state.selectedTicket?.ticket_id === ticket.ticket_id;
+    const deleteSelected = state.ticketDeleteSelection.has(ticket.ticket_id);
+    const entry = document.createElement("article");
+    entry.className = "ticket-entry";
+    entry.classList.toggle("is-delete-selected", deleteSelected);
+    const flipCard = document.createElement("div");
+    flipCard.className = "ticket-flip-card";
+    flipCard.classList.toggle("is-flipped", flipped);
+    flipCard.classList.toggle("is-delete-mode", state.ticketDeleteMode);
+    flipCard.tabIndex = 0;
+    flipCard.setAttribute("role", "button");
+    flipCard.setAttribute(
+      "aria-label",
+      state.ticketDeleteMode
+        ? `${deleteSelected ? "取消选择" : "选择"}${ticket.title}票根`
+        : flipped
+          ? `已翻到${ticket.title}票根背面`
+          : `翻到${ticket.title}票根背面`,
+    );
+    const inner = document.createElement("span");
+    inner.className = "ticket-flip-inner";
+    const front = renderTicketCard(ticket, { interactive: !state.ticketDeleteMode });
+    front.classList.add("ticket-face", "ticket-face-front");
+    const back = renderTicketBack(ticket, { interactive: !state.ticketDeleteMode });
+    back.classList.add("ticket-face", "ticket-face-back");
+    inner.append(front, back);
+    flipCard.append(inner);
+    flipCard.addEventListener("click", () => toggleTicket(ticket));
+    flipCard.addEventListener("keydown", (event) => {
+      if (event.target !== flipCard || (event.key !== "Enter" && event.key !== " ")) return;
+      event.preventDefault();
+      toggleTicket(ticket);
+    });
+    entry.append(flipCard);
+    if (state.ticketDeleteMode) {
+      const marker = document.createElement("span");
+      marker.className = "ticket-delete-marker";
+      marker.textContent = deleteSelected ? "✓" : "";
+      entry.append(marker);
+    }
+    list.append(entry);
   }
 }
 
-async function openTicketFolder() {
+async function openTicketFolder(selectedTicket = null) {
+  state.selectedTicket = selectedTicket ? normalizeTicket(selectedTicket) : null;
+  state.ticketDeleteMode = false;
+  state.ticketDeleteSelection.clear();
+  state.ticketCaptures = [];
+  closeTicketEditPopover();
   renderTicketFolder();
   setPage("tickets", { historyMode: "push" });
   try {
     const payload = await bridge.listTickets();
     for (const ticket of payload.tickets || []) {
-      ticketStore.save(normalizeTicket(ticket, ticketIdentityFallback()));
+      ticketStore.sync(normalizeTicket(ticket, ticketIdentityFallback()));
     }
     renderTicketFolder();
   } catch {
@@ -935,6 +1267,7 @@ async function enterPlayer() {
       mode: modePayload(),
     });
     state.session = created.session;
+    const resumeDirectly = shouldResumeDirectly(created.session);
     state.viewingId = created.viewing_summary?.viewing_id
       || created.session?.viewing_id
       || state.viewingId;
@@ -951,6 +1284,7 @@ async function enterPlayer() {
     }
     if (state.source === "local") await uploadSelectedSubtitle(media);
     startRuntimeLoops();
+    if (resumeDirectly) unlockPlayback();
     await pollStatus();
   } catch (error) {
     setError(error.message || "建立观看会话失败", "preparation");
@@ -1340,9 +1674,14 @@ function renderPreparation(payload) {
       }[status] || "确认完成前不会解锁播放。";
 
   const analysis = payload.analysis || {};
-  $("#analysis-state-card").hidden = !analysis.error && !preparation.knowledge_card_error;
+  const degradedReason = analysisDegradedReason(analysis, payload.analysis_runtime);
+  $("#analysis-state-card").hidden = !analysis.error
+    && analysis.status !== "degraded"
+    && !preparation.knowledge_card_error;
   $("#analysis-state-title").textContent = analysis.status === "failed" ? "剧情分析不可用" : "当前为降级状态";
-  $("#analysis-state-description").textContent = analysis.error || preparation.knowledge_card_error || "";
+  $("#analysis-state-description").textContent = degradedReason
+    || preparation.knowledge_card_error
+    || "";
   const visual = payload.visual_context || {};
   $("#visual-state-card").hidden = !visual.degraded_reason;
   $("#visual-state-description").textContent = visual.degraded_reason || "";
@@ -1431,6 +1770,11 @@ function renderWatchingStatus(payload) {
     analysis.covered_until_ms,
     playheadMs,
   );
+  const degradedReason = analysisDegradedReason(analysis, payload.analysis_runtime);
+  $("#analysis-degraded-reason").hidden = analysis.status !== "degraded";
+  $("#analysis-degraded-reason").textContent = analysis.status === "degraded"
+    ? `降级原因：${degradedReason}`
+    : "";
   const notice = $("#playback-notice");
   const protection = payload.fear_protection || {};
   if (state.unlocked && protection.status === "protected") {
@@ -1797,7 +2141,8 @@ async function openRecentViewing(value) {
         : await bridge.getViewing(recent.viewing_id);
       const ticket = ticketFromViewingPayload(payload) || recent.ticket;
       if (!ticket) throw new Error("这条已看完记录还没有返回票根");
-      openTicketDetail(saveAndSelectTicket(ticket));
+      const saved = saveAndSelectTicket(ticket);
+      await openTicketFolder(saved);
     } catch (error) {
       toast(error.message || "票根读取失败");
     }
@@ -2154,11 +2499,40 @@ $("#setup-form").addEventListener("submit", (event) => {
 $("#confirm-back").addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("togetherwatch:back"));
 });
-$("#ticket-folder-button").addEventListener("click", openTicketFolder);
+$("#ticket-folder-button").addEventListener("click", () => openTicketFolder());
 $("#tickets-back").addEventListener("click", () => {
+  state.selectedTicket = null;
+  state.ticketDeleteMode = false;
+  state.ticketDeleteSelection.clear();
+  closeTicketEditPopover();
+  closeTicketFrameGallery();
   if (history.state?.[WATCH_PAGE_STATE_KEY] === "tickets") history.back();
   else setPage("confirm");
 });
+$("#tickets-edit-button").addEventListener("click", () => {
+  if (state.ticketDeleteMode) {
+    leaveTicketDeleteMode();
+    return;
+  }
+  const popover = $("#tickets-edit-popover");
+  popover.hidden = !popover.hidden;
+});
+$("#tickets-delete-mode-button").addEventListener("click", enterTicketDeleteMode);
+$("#tickets-sort-button").addEventListener("click", () => {
+  closeTicketEditPopover();
+  renderTicketSortDialog();
+  $("#ticket-sort-dialog").showModal();
+});
+$("#ticket-delete-confirm").addEventListener("click", confirmTicketDelete);
+$("#ticket-sort-newest").addEventListener("click", () => setTicketSort(true));
+$("#ticket-sort-oldest").addEventListener("click", () => setTicketSort(false));
+$("#ticket-sort-cancel").addEventListener("click", () => $("#ticket-sort-dialog").close());
+$("#ticket-frame-close").addEventListener("click", closeTicketFrameGallery);
+$("#ticket-frame-dialog .pick-ticket-back-image").addEventListener("click", () => {
+  pickTicketImage(state.selectedTicket, "back");
+});
+$("#ticket-frame-dialog .clear-ticket-back-image")
+  .addEventListener("click", clearTicketBackImage);
 $("#open-chat-button").addEventListener("click", () => bridge.openChat({ source: state.source }));
 $("#player-back").addEventListener("click", showEndChoiceDialog);
 $("#return-confirm-button").addEventListener("click", showEndChoiceDialog);
@@ -2316,40 +2690,58 @@ $("#watch-end-dialog").addEventListener("cancel", (event) => {
   event.preventDefault();
   closeWatchEndDialog();
 });
-$("#ticket-detail-close").addEventListener("click", () => {
-  $("#ticket-detail-dialog").close();
-  state.selectedTicket = null;
-});
-function flipTicketDetail() {
-  state.ticketFlipped = !state.ticketFlipped;
-  renderTicketDetail();
-}
-$("#ticket-detail-card").addEventListener("click", flipTicketDetail);
-$("#ticket-flip-button").addEventListener("click", flipTicketDetail);
-$("#edit-companion-avatar").addEventListener("click", () => pickTicketImage("companion"));
-$("#edit-viewer-avatar").addEventListener("click", () => pickTicketImage("viewer"));
-$("#pick-ticket-back-image").addEventListener("click", () => pickTicketImage("back"));
-$("#clear-ticket-back-image").addEventListener("click", clearTicketBackImage);
 $("#ticket-image-input").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];
-  if (!file || !state.selectedTicket || !state.ticketAssetRole) return;
+  const target = state.ticketImageTarget;
+  if (!file || !target || !state.ticketAssetRole) return;
   try {
-    const imageUrl = await fileAsDataUrl(file);
-    const updated = state.ticketAssetRole === "back"
-      ? normalizeTicket({ ...state.selectedTicket, local_back_image_url: imageUrl })
-      : updateTicketAvatar(state.selectedTicket, state.ticketAssetRole, imageUrl);
-    saveAndSelectTicket(updated);
-    renderTicketDetail();
+    await openTicketImageEditor(file, target, state.ticketAssetRole);
   } catch (error) {
     toast(error.message || "票根图片保存失败");
-  } finally {
     state.ticketAssetRole = "";
+    state.ticketImageTarget = null;
   }
 });
-$("#ticket-detail-dialog").addEventListener("cancel", (event) => {
+$("#ticket-image-editor-cancel").addEventListener("click", closeTicketImageEditor);
+$("#ticket-image-editor-confirm").addEventListener("click", confirmTicketImageEditor);
+$("#ticket-image-editor-dialog").addEventListener("cancel", (event) => {
   event.preventDefault();
-  $("#ticket-detail-dialog").close();
-  state.selectedTicket = null;
+  closeTicketImageEditor();
+});
+$("#ticket-image-editor-canvas").addEventListener("pointerdown", (event) => {
+  const draft = state.ticketImageDraft;
+  if (!draft) return;
+  event.currentTarget.setPointerCapture(event.pointerId);
+  draft.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  resetTicketEditorGesture(draft);
+});
+$("#ticket-image-editor-canvas").addEventListener("pointermove", (event) => {
+  const draft = state.ticketImageDraft;
+  if (!draft?.pointers.has(event.pointerId)) return;
+  draft.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  const center = ticketEditorPointerCenter(draft.pointers);
+  const distance = ticketEditorPointerDistance(draft.pointers);
+  if (center && draft.lastCenter) {
+    draft.offsetX += center.x - draft.lastCenter.x;
+    draft.offsetY += center.y - draft.lastCenter.y;
+  }
+  if (distance > 0 && draft.lastDistance > 0) {
+    draft.zoom = Math.max(1, Math.min(6, draft.zoom * (distance / draft.lastDistance)));
+  }
+  draft.lastCenter = center;
+  draft.lastDistance = distance;
+  drawTicketImageEditor();
+});
+for (const eventName of ["pointerup", "pointercancel"]) {
+  $("#ticket-image-editor-canvas").addEventListener(eventName, (event) => {
+    const draft = state.ticketImageDraft;
+    if (!draft) return;
+    draft.pointers.delete(event.pointerId);
+    resetTicketEditorGesture(draft);
+  });
+}
+window.addEventListener("resize", () => {
+  if (state.ticketImageDraft) requestAnimationFrame(drawTicketImageEditor);
 });
 
 window.addEventListener("togetherwatch:danmaku", (event) => acceptDanmaku(event.detail));

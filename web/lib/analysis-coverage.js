@@ -23,8 +23,10 @@ export function formatLeadDuration(value) {
 export function analysisCoverageLabel(status, coveredUntilMs, playheadMs) {
   const normalizedStatus = String(status || "").trim().toLowerCase();
   if (normalizedStatus === "failed") return "剧情分析不可用";
-  if (normalizedStatus === "degraded") return "剧情分析暂时降级";
   const aheadMs = coverageAheadMs(coveredUntilMs, playheadMs);
+  if (normalizedStatus === "degraded") {
+    return `已提前解析 ${formatLeadDuration(aheadMs)}剧情 · 暂时降级`;
+  }
   return aheadMs > 0
     ? `已提前解析 ${formatLeadDuration(aheadMs)}剧情`
     : "正在准备前方剧情";

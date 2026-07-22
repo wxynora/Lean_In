@@ -9,6 +9,7 @@ import {
   normalizeTicket,
   normalizeTicketCapture,
   observeViewingDuration,
+  sortTicketsByEndedAt,
   updateTicketAvatar,
 } from "../lib/tickets.js";
 
@@ -103,6 +104,42 @@ test("ticket store deduplicates stable tickets and keeps the latest title", () =
 
   assert.equal(store.list().length, 1);
   assert.equal(store.list()[0].title, "After");
+});
+
+test("ticket deletion survives server refresh without deleting other tickets", () => {
+  const values = new Map();
+  const storage = {
+    getItem: (key) => values.get(key) || null,
+    setItem: (key, value) => values.set(key, value),
+  };
+  const store = createTicketStore(storage, "deletable-tickets");
+  store.save({ ticket_id: "keep", title: "Keep" });
+  store.save({ ticket_id: "delete", title: "Delete" });
+
+  store.remove("delete");
+  assert.deepEqual(store.list().map((ticket) => ticket.ticket_id), ["keep"]);
+  assert.equal(store.sync({ ticket_id: "delete", title: "Server copy" }), null);
+  assert.deepEqual(store.list().map((ticket) => ticket.ticket_id), ["keep"]);
+
+  store.save({ ticket_id: "delete", title: "Explicitly restored" });
+  assert.equal(store.list().some((ticket) => ticket.ticket_id === "delete"), true);
+});
+
+test("ticket folder can switch between newest-first and oldest-first", () => {
+  const tickets = [
+    { ticket_id: "middle", ended_at: "2026-07-22T10:00:00Z" },
+    { ticket_id: "oldest", ended_at: "2026-07-20T10:00:00Z" },
+    { ticket_id: "newest", ended_at: "2026-07-23T10:00:00Z" },
+  ];
+
+  assert.deepEqual(
+    sortTicketsByEndedAt(tickets, true).map((ticket) => ticket.ticket_id),
+    ["newest", "middle", "oldest"],
+  );
+  assert.deepEqual(
+    sortTicketsByEndedAt(tickets, false).map((ticket) => ticket.ticket_id),
+    ["oldest", "middle", "newest"],
+  );
 });
 
 test("server refresh does not erase browser-local ticket art", () => {

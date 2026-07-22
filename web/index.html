@@ -191,7 +191,13 @@
             <h1 id="tickets-title">票夹</h1>
             <p id="tickets-count">0 张一起看的票根</p>
           </div>
-          <span class="top-bar-spacer" aria-hidden="true"></span>
+          <div class="ticket-edit-menu">
+            <button id="tickets-edit-button" class="top-bar-link" type="button">编辑</button>
+            <div id="tickets-edit-popover" class="ticket-edit-popover" hidden>
+              <button id="tickets-delete-mode-button" type="button">删除</button>
+              <button id="tickets-sort-button" type="button">排序</button>
+            </div>
+          </div>
         </header>
         <main class="ticket-folder-scroll">
           <div id="tickets-empty" class="ticket-empty-state">
@@ -201,6 +207,10 @@
           </div>
           <div id="tickets-list" class="ticket-list" hidden></div>
         </main>
+        <footer id="ticket-delete-bar" class="ticket-delete-bar" hidden>
+          <span id="ticket-delete-selection">选择要删除的票根</span>
+          <button id="ticket-delete-confirm" class="danger-text-button" type="button" disabled>确认删除</button>
+        </footer>
       </section>
 
       <section id="player-page" class="page" hidden aria-labelledby="player-title">
@@ -272,6 +282,7 @@
                 <span id="analysis-label">正在准备前方剧情</span>
                 <strong id="playback-clock">00:00 / 00:00</strong>
               </div>
+              <p id="analysis-degraded-reason" hidden></p>
               <p id="playback-notice" hidden></p>
             </section>
           </section>
@@ -358,6 +369,18 @@
 
       <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
       <input id="ticket-image-input" class="visually-hidden" type="file" accept="image/*">
+      <dialog id="ticket-image-editor-dialog" class="ticket-tool-dialog ticket-image-editor-dialog" aria-labelledby="ticket-image-editor-title">
+        <div class="ticket-tool-surface ticket-image-editor-surface">
+          <h2 id="ticket-image-editor-title">调整图片</h2>
+          <canvas id="ticket-image-editor-canvas" class="ticket-image-editor-canvas"></canvas>
+          <p class="ticket-image-editor-hint">拖动调整位置 · 双指缩放</p>
+          <p id="ticket-image-editor-error" class="capture-preview-error" role="alert" hidden></p>
+          <div class="ticket-image-editor-actions">
+            <button id="ticket-image-editor-cancel" class="secondary-button" type="button">取消</button>
+            <button id="ticket-image-editor-confirm" class="primary-button" type="button">使用这张</button>
+          </div>
+        </div>
+      </dialog>
       <dialog id="watch-end-choice-dialog" class="watch-end-choice-dialog" aria-labelledby="watch-end-choice-title">
         <div class="watch-end-choice-surface">
           <button id="watch-end-choice-close" class="dialog-close-button" type="button" aria-label="关闭">×</button>
@@ -403,37 +426,36 @@
         </div>
       </dialog>
 
-      <dialog id="ticket-detail-dialog" class="ticket-detail-dialog" aria-labelledby="ticket-detail-title">
-        <div class="ticket-detail-surface">
-          <h2 id="ticket-detail-title">一起看的票根</h2>
-          <button id="ticket-detail-card" class="ticket-detail-card" type="button" aria-label="翻转票根"></button>
-          <p id="ticket-flip-hint" class="ticket-flip-hint">点票面可查看背面</p>
-          <section id="ticket-front-actions" class="ticket-edit-section">
-            <p>票面头像</p>
+      <dialog id="ticket-sort-dialog" class="ticket-tool-dialog" aria-labelledby="ticket-sort-title">
+        <div class="ticket-tool-surface">
+          <h2 id="ticket-sort-title">票根排序</h2>
+          <button id="ticket-sort-newest" class="ticket-sort-choice" type="button">
+            <span><strong>倒序</strong><small>最近观看的排在前面</small></span><b aria-hidden="true"></b>
+          </button>
+          <button id="ticket-sort-oldest" class="ticket-sort-choice" type="button">
+            <span><strong>正序</strong><small>最早观看的排在前面</small></span><b aria-hidden="true"></b>
+          </button>
+          <button id="ticket-sort-cancel" class="text-button" type="button">取消</button>
+        </div>
+      </dialog>
+
+      <dialog id="ticket-frame-dialog" class="ticket-tool-dialog" aria-labelledby="ticket-frame-title">
+        <div class="ticket-tool-surface ticket-frame-surface">
+          <h2 id="ticket-frame-title">选择票根背面</h2>
+          <div class="ticket-capture-heading">
             <div>
-              <button id="edit-companion-avatar" class="text-button" type="button">换<span data-companion></span>头像</button>
-              <button id="edit-viewer-avatar" class="text-button" type="button">换我的头像</button>
+              <p>自选画面</p>
+              <small>从观看时截下的画面里选一张</small>
             </div>
-          </section>
-          <section id="ticket-back-actions" class="ticket-edit-section" hidden>
-            <div class="ticket-capture-heading">
-              <div>
-                <p>自选画面</p>
-                <small>从观看时截下的画面里选一张</small>
-              </div>
-              <span id="ticket-captures-state"></span>
-            </div>
-            <div id="ticket-captures-list" class="ticket-captures-list"></div>
-            <p id="ticket-captures-error" class="capture-preview-error" role="alert" hidden></p>
-            <div>
-              <button id="pick-ticket-back-image" class="text-button" type="button">选择本地背图</button>
-              <button id="clear-ticket-back-image" class="text-button" type="button" hidden>清除背图</button>
-            </div>
-          </section>
-          <div class="ticket-detail-actions">
-            <button id="ticket-flip-button" class="secondary-button" type="button">查看背面</button>
-            <button id="ticket-detail-close" class="primary-button" type="button">关闭</button>
+            <span class="ticket-captures-state"></span>
           </div>
+          <div class="ticket-captures-list"></div>
+          <p class="ticket-captures-error capture-preview-error" role="alert" hidden></p>
+          <div class="ticket-frame-actions">
+            <button class="pick-ticket-back-image text-button" type="button">从本地图库选择</button>
+            <button class="clear-ticket-back-image text-button" type="button" hidden>清除当前画面</button>
+          </div>
+          <button id="ticket-frame-close" class="primary-button" type="button">完成</button>
         </div>
       </dialog>
     </div>
@@ -459,7 +481,7 @@
       <article class="ticket-card">
         <div class="ticket-body">
           <div class="ticket-kicker-row">
-            <span>LEAN IN</span>
+            <span>Lean In · 双人观影票</span>
             <time class="ticket-date"></time>
           </div>
           <div class="ticket-people" aria-label="一起看的两个人">
@@ -476,6 +498,7 @@
           <strong class="ticket-duration"></strong>
           <div class="ticket-work-meta">
             <span class="ticket-work-title"></span>
+            <span class="ticket-scene"><b>场次</b><time class="ticket-scene-time"></time></span>
           </div>
           <span class="ticket-script" aria-hidden="true">
             <span>One Screen,</span>
@@ -483,12 +506,16 @@
           </span>
         </div>
         <div class="ticket-stub">
-          <strong>票夹</strong>
-          <div>
-            <span>LEAN IN</span>
-            <small>5排20 · 5排21</small>
+          <strong>双人票</strong>
+          <span class="ticket-stub-rule" aria-hidden="true"></span>
+          <div class="ticket-seat-block">
+            <small>座位</small>
+            <span>5 排 20 座</span>
+            <span>5 排 21 座</span>
           </div>
-          <time class="ticket-time"></time>
+          <span class="ticket-stub-rule" aria-hidden="true"></span>
+          <small class="ticket-number"></small>
+          <span class="ticket-check-copy">检票联</span>
         </div>
         <span class="ticket-divider" aria-hidden="true"></span>
         <span class="ticket-notch ticket-notch-top" aria-hidden="true"></span>
@@ -497,12 +524,17 @@
     </template>
     <template id="ticket-back-template">
       <article class="ticket-back-card">
-        <img class="ticket-back-image" alt="票根背面画面" hidden>
-        <div class="ticket-back-empty">
-          <span>ONE SCREEN, TWO HEARTS</span>
-          <strong>还没有选票根背面的画面</strong>
-        </div>
-        <span class="ticket-back-title"></span>
+        <button class="ticket-back-picture" type="button" aria-label="选择票根背面画面">
+          <img class="ticket-back-image" alt="票根背面画面" hidden>
+          <span class="ticket-back-empty">
+            <span>ONE SCREEN, TWO HEARTS</span>
+            <strong>点这里选择背面画面</strong>
+          </span>
+        </button>
+        <button class="ticket-back-footer" type="button" aria-label="翻回票根正面">
+          <span class="ticket-back-title"></span>
+          <b>正面</b>
+        </button>
       </article>
     </template>
 

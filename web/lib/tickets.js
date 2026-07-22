@@ -176,14 +176,43 @@ export function mergeTickets(...collections) {
   ));
 }
 
+export function sortTicketsByEndedAt(tickets, newestFirst = true) {
+  const direction = newestFirst ? -1 : 1;
+  return [...(Array.isArray(tickets) ? tickets : [])].sort((left, right) => {
+    const leftTime = Date.parse(left?.ended_at || left?.created_at) || 0;
+    const rightTime = Date.parse(right?.ended_at || right?.created_at) || 0;
+    return (leftTime - rightTime) * direction;
+  });
+}
+
 export function createTicketStore(
   storage = globalThis.localStorage,
   storageKey = DEFAULT_STORAGE_KEY,
 ) {
+  const deletedStorageKey = `${storageKey}:deleted`;
+
+  function deletedIds() {
+    try {
+      const parsed = JSON.parse(storage?.getItem(deletedStorageKey) || "[]");
+      return new Set(Array.isArray(parsed) ? parsed.map(cleanText).filter(Boolean) : []);
+    } catch {
+      return new Set();
+    }
+  }
+
+  function writeTickets(tickets) {
+    storage?.setItem(storageKey, JSON.stringify(tickets));
+  }
+
+  function writeDeleted(ids) {
+    storage?.setItem(deletedStorageKey, JSON.stringify([...ids]));
+  }
+
   function list() {
     try {
       const parsed = JSON.parse(storage?.getItem(storageKey) || "[]");
-      return mergeTickets(parsed);
+      const deleted = deletedIds();
+      return mergeTickets(parsed).filter((ticket) => !deleted.has(ticket.ticket_id));
     } catch {
       return [];
     }
@@ -191,14 +220,33 @@ export function createTicketStore(
 
   function save(value) {
     const incoming = normalizeTicket(value);
+    const deleted = deletedIds();
+    if (deleted.delete(incoming.ticket_id)) writeDeleted(deleted);
     const previous = list().find((ticket) => ticket.ticket_id === incoming.ticket_id);
     const ticket = previous ? normalizeTicket(incoming, previous) : incoming;
     const tickets = mergeTickets(list(), [ticket]);
-    storage?.setItem(storageKey, JSON.stringify(tickets));
+    writeTickets(tickets);
     return ticket;
   }
 
-  return { list, save };
+  function sync(value) {
+    const incoming = normalizeTicket(value);
+    if (deletedIds().has(incoming.ticket_id)) return null;
+    return save(incoming);
+  }
+
+  function remove(ticketId) {
+    const normalizedId = cleanText(ticketId);
+    if (!normalizedId) return list();
+    const deleted = deletedIds();
+    deleted.add(normalizedId);
+    writeDeleted(deleted);
+    const tickets = list().filter((ticket) => ticket.ticket_id !== normalizedId);
+    writeTickets(tickets);
+    return tickets;
+  }
+
+  return { list, save, sync, remove };
 }
 
 export function normalizeTicketCapture(value) {

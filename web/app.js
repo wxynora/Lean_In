@@ -444,14 +444,16 @@ async function loadTicketCaptures(viewingId) {
   if (!viewingId) {
     state.ticketCapturesLoading = false;
     renderTicketCapturePicker();
-    return;
+    return true;
   }
+  let loaded = true;
   try {
     const payload = await bridge.listTicketFrameCaptures(viewingId);
     state.ticketCaptures = (payload.captures || [])
       .map(normalizeTicketCapture)
       .filter((frame) => frame.frame_id && frame.image_url);
   } catch (error) {
+    loaded = false;
     const currentError = activeTicketFrameDialog()?.querySelector(".ticket-captures-error");
     if (currentError) {
       currentError.textContent = error.message || "自选画面读取失败";
@@ -460,6 +462,7 @@ async function loadTicketCaptures(viewingId) {
   }
   state.ticketCapturesLoading = false;
   renderTicketCapturePicker();
+  return loaded;
 }
 
 function ticketFromFrameSelection(payload, frame = null) {
@@ -695,15 +698,21 @@ function renderTicketFrameDialog() {
   renderTicketCapturePicker(dialog);
 }
 
-function openTicketFrameGallery(value) {
+async function openTicketFrameGallery(value) {
+  if (state.ticketCapturesLoading) return;
   const ticket = normalizeTicket(value);
   state.selectedTicket = ticket;
   state.ticketCaptures = [];
   state.ticketCapturesLoading = false;
   renderTicketFrameDialog();
+  const loaded = await loadTicketCaptures(ticket.viewing_id);
+  if (loaded && state.ticketCaptures.length === 0) {
+    pickTicketImage(ticket, "back");
+    return;
+  }
+  renderTicketFrameDialog();
   const dialog = activeTicketFrameDialog();
   if (!dialog.open) dialog.showModal();
-  loadTicketCaptures(ticket.viewing_id);
 }
 
 function closeTicketFrameGallery() {
@@ -2526,7 +2535,6 @@ $("#tickets-sort-button").addEventListener("click", () => {
 $("#ticket-delete-confirm").addEventListener("click", confirmTicketDelete);
 $("#ticket-sort-newest").addEventListener("click", () => setTicketSort(true));
 $("#ticket-sort-oldest").addEventListener("click", () => setTicketSort(false));
-$("#ticket-sort-cancel").addEventListener("click", () => $("#ticket-sort-dialog").close());
 $("#ticket-frame-close").addEventListener("click", closeTicketFrameGallery);
 $("#ticket-frame-dialog .pick-ticket-back-image").addEventListener("click", () => {
   pickTicketImage(state.selectedTicket, "back");

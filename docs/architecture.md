@@ -159,6 +159,14 @@ Session cleanup, saved progress, and completed viewing are separate state transi
 keeps the authoritative playhead and committed plot analysis under the same `viewing_id`, so a new
 session can resume without fabricating or redoing already cached scenes. It creates no ticket.
 
+The tested reference wiring is `ViewingLedger(analysis_retention=watch_core)`: the save transition
+copies committed chunks, risks, coverage, knowledge-card data, and the subtitle reference into a
+viewing-and-part cache, while resume rebinds them to the new session ID after validating media identity
+and local `media_revision`. Raw samples and generated visual material are excluded. The bundled
+`WatchCore` retention store is in-process; a production `RuntimeStore` persists the equivalent payload
+to survive restarts. Without a connected retention store, saved progress must not claim that analysis
+was retained.
+
 An explicit completed-viewing action clears resumable progress and creates one stable structured
 ticket even when the natural media-end signal was not reached; the separate `completed` field still
 reports that fact truthfully. The ticket ID is deterministic for the viewing, retries return the same

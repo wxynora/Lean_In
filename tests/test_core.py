@@ -234,6 +234,63 @@ class WatchCoreTest(unittest.TestCase):
         self.assertEqual(context.current_chunks[0].summary, "This range was already analyzed.")
         self.assertEqual(risks[0].timeline_epoch, 1)
 
+    def test_saved_analysis_rejects_a_replaced_local_file(self) -> None:
+        capabilities = LocalPlaybackCapabilities(
+            can_play=True,
+            can_seek=True,
+            can_read_future=True,
+            can_export_frames=True,
+            can_export_audio=False,
+            has_audio=False,
+            is_drm=False,
+        )
+        original = MediaDescriptor(
+            media_id="local:asset-1",
+            source="local_file",
+            title="Local movie",
+            duration_ms=600_000,
+            local_media=LocalMediaDescriptor(
+                local_asset_id="asset-1",
+                media_revision="revision-1",
+                capabilities=capabilities,
+            ),
+        )
+        replacement = MediaDescriptor(
+            media_id="local:asset-1",
+            source="local_file",
+            title="Local movie",
+            duration_ms=600_000,
+            local_media=LocalMediaDescriptor(
+                local_asset_id="asset-1",
+                media_revision="revision-2",
+                capabilities=capabilities,
+            ),
+        )
+        self.core.create_session(
+            session_id="local-original",
+            media=original,
+            mode=SessionMode(knowledge_mode=KnowledgeMode.KNOWN),
+            capabilities=ClientCapabilities(playback_snapshot=True),
+        )
+        self.core.record_analysis_coverage(
+            "local-original",
+            start_ms=0,
+            end_ms=60_000,
+        )
+        self.assertEqual(
+            self.core.retain_viewing_analysis("viewing-local", "local-original"),
+            60_000,
+        )
+        self.core.create_session(
+            session_id="local-replacement",
+            media=replacement,
+            mode=SessionMode(knowledge_mode=KnowledgeMode.KNOWN),
+            capabilities=ClientCapabilities(playback_snapshot=True),
+        )
+
+        with self.assertRaisesRegex(WatchCoreError, "another media revision"):
+            self.core.restore_viewing_analysis("viewing-local", "local-replacement")
+
 
 class ClientCapabilitiesTest(unittest.TestCase):
     def test_client_sampling_requires_local_media(self) -> None:

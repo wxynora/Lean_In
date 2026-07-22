@@ -3,13 +3,19 @@ from __future__ import annotations
 import unittest
 
 from together_watch import (
+    ClientCapabilities,
+    KnowledgeMode,
     MediaDescriptor,
     PlaybackSnapshot,
+    PlotChunk,
+    RiskEvent,
+    SessionMode,
     ViewingExitAction,
     ViewingError,
     ViewingFrame,
     ViewingFrameCapture,
     ViewingLedger,
+    WatchCore,
 )
 
 
@@ -293,7 +299,34 @@ class ViewingLedgerTest(unittest.TestCase):
         self.assertIsNone(ended.ticket)
         self.assertEqual(self.ledger.list_tickets(), ())
 
+    def test_save_progress_without_retention_does_not_claim_cached_analysis(self) -> None:
+        media = MediaDescriptor(
+            media_id="demo:no-retention",
+            source="html5",
+            title="No Retention",
+            duration_ms=120_000,
+        )
+        self.ledger.register_session(
+            session_id="no-retention",
+            media=media,
+            observed_at_ms=0,
+        )
+
+        saved = self.ledger.end_session(
+            "no-retention",
+            observed_at_ms=1_000,
+            action=ViewingExitAction.SAVE_PROGRESS,
+            analysis_covered_until_ms=60_000,
+        )
+
+        self.assertIsNotNone(saved.progress)
+        assert saved.progress is not None
+        self.assertFalse(saved.progress.analysis_retained)
+        self.assertEqual(saved.progress.analysis_covered_until_ms, 0)
+
     def test_save_progress_retains_resume_point_analysis_and_selected_frame(self) -> None:
+        core = WatchCore()
+        ledger = ViewingLedger(analysis_retention=core)
         media = MediaDescriptor(
             media_id="demo:resume",
             source="bilibili_embed",
@@ -302,14 +335,57 @@ class ViewingLedgerTest(unittest.TestCase):
             work_key="movie:resume",
             part_key="resume:p1",
         )
-        first = self.ledger.register_session(
+        core.create_session(
+            session_id="resume-first",
+            media=media,
+            mode=SessionMode(knowledge_mode=KnowledgeMode.NEEDS_SUMMARY),
+            capabilities=ClientCapabilities(playback_snapshot=True, risk_overlay=True),
+        )
+        core.add_plot_chunks(
+            "resume-first",
+            [
+                PlotChunk(
+                    chunk_id="retained-plot",
+                    session_id="resume-first",
+                    timeline_epoch=0,
+                    start_ms=100_000,
+                    end_ms=140_000,
+                    summary="The saved scene remains available after resume.",
+                )
+            ],
+        )
+        core.add_risk_events(
+            "resume-first",
+            [
+                RiskEvent(
+                    risk_id="retained-risk",
+                    session_id="resume-first",
+                    timeline_epoch=0,
+                    warn_at_ms=130_000,
+                    start_ms=135_000,
+                    end_ms=140_000,
+                    severity=0.8,
+                )
+            ],
+        )
+        core.record_analysis_coverage(
+            "resume-first",
+            start_ms=0,
+            end_ms=300_000,
+        )
+        core.set_analysis_references(
+            "resume-first",
+            knowledge_card={"title": "Resume Movie", "status": "confirmed"},
+            subtitle_reference={"asset_id": "subtitle-resume", "language": "zh-CN"},
+        )
+        first = ledger.register_session(
             session_id="resume-first",
             media=media,
             source_reference="https://www.bilibili.com/video/BVresume?p=1",
             observed_at_ms=0,
         )
-        self.ledger.unlock_session("resume-first")
-        self.ledger.observe_playback(
+        ledger.unlock_session("resume-first")
+        ledger.observe_playback(
             "resume-first",
             snapshot(
                 media_id=media.media_id,
@@ -329,13 +405,13 @@ class ViewingLedgerTest(unittest.TestCase):
             image_url="https://gateway.example/watch-frames/frame-125.jpg",
             selected_at="2026-07-22T00:02:05Z",
         )
-        self.ledger.select_ticket_frame(
+        ledger.select_ticket_frame(
             first.viewing_id,
             frame,
             observed_at_ms=125_500,
         )
 
-        saved = self.ledger.end_session(
+        saved = ledger.end_session(
             "resume-first",
             observed_at_ms=126_000,
             action=ViewingExitAction.SAVE_PROGRESS,
@@ -351,20 +427,26 @@ class ViewingLedgerTest(unittest.TestCase):
         self.assertTrue(saved.progress.analysis_retained)
         self.assertEqual(saved.completed_analysis_cache_expires_at, "")
         self.assertEqual(saved.progress.ticket_back_frame, frame)
-        self.assertEqual(self.ledger.list_resumable(), (saved.progress,))
+        self.assertEqual(ledger.list_resumable(), (saved.progress,))
 
-        cleared = self.ledger.clear_ticket_frame(
+        cleared = ledger.clear_ticket_frame(
             first.viewing_id,
             observed_at_ms=127_000,
         )
         self.assertIsNone(cleared.progress.ticket_back_frame)
-        self.ledger.select_ticket_frame(
+        ledger.select_ticket_frame(
             first.viewing_id,
             frame,
             observed_at_ms=128_000,
         )
 
-        resumed = self.ledger.register_session(
+        core.create_session(
+            session_id="resume-second",
+            media=media,
+            mode=SessionMode(knowledge_mode=KnowledgeMode.NEEDS_SUMMARY),
+            capabilities=ClientCapabilities(playback_snapshot=True, risk_overlay=True),
+        )
+        resumed = ledger.register_session(
             session_id="resume-second",
             media=media,
             viewing_id=first.viewing_id,
@@ -373,9 +455,44 @@ class ViewingLedgerTest(unittest.TestCase):
         )
         self.assertEqual(resumed.viewing_id, first.viewing_id)
         self.assertIsNone(resumed.progress)
-        self.assertEqual(self.ledger.list_resumable(), ())
+        self.assertEqual(ledger.list_resumable(), ())
+        core.start_session("resume-second")
+        core.apply_snapshot(
+            "resume-second",
+            snapshot(
+                media_id=media.media_id,
+                playhead_ms=125_000,
+                is_playing=False,
+                playback_rate=1.0,
+                timeline_epoch=0,
+                snapshot_seq=1,
+                duration_ms=media.duration_ms,
+            ),
+        )
+        restored_context = core.build_context("resume-second")
+        restored_risks = core.upcoming_risks("resume-second")
+        self.assertEqual(
+            restored_context.current_chunks[0].summary,
+            "The saved scene remains available after resume.",
+        )
+        self.assertEqual(restored_context.current_chunks[0].session_id, "resume-second")
+        self.assertEqual(restored_risks[0].session_id, "resume-second")
+        self.assertEqual(
+            core.reusable_coverage_at("resume-second", position_ms=125_000),
+            (0, 300_000),
+        )
+        self.assertEqual(
+            core.analysis_references("resume-second"),
+            {
+                "knowledge_card": {"title": "Resume Movie", "status": "confirmed"},
+                "subtitle_reference": {
+                    "asset_id": "subtitle-resume",
+                    "language": "zh-CN",
+                },
+            },
+        )
 
-        completed = self.ledger.end_session(
+        completed = ledger.end_session(
             "resume-second",
             observed_at_ms=140_000,
             action=ViewingExitAction.COMPLETE,
@@ -388,13 +505,24 @@ class ViewingLedgerTest(unittest.TestCase):
         )
 
     def test_completed_analysis_ttl_is_configurable_and_does_not_affect_saved_progress(self) -> None:
-        ledger = ViewingLedger(completed_analysis_ttl_seconds=3_600)
+        core = WatchCore()
+        ledger = ViewingLedger(
+            completed_analysis_ttl_seconds=3_600,
+            analysis_retention=core,
+        )
         media = MediaDescriptor(
             media_id="demo:ttl",
             source="html5",
             title="TTL Movie",
             duration_ms=120_000,
         )
+        core.create_session(
+            session_id="ttl-saved",
+            media=media,
+            mode=SessionMode(knowledge_mode=KnowledgeMode.KNOWN),
+            capabilities=ClientCapabilities(playback_snapshot=True),
+        )
+        core.record_analysis_coverage("ttl-saved", start_ms=0, end_ms=60_000)
         saved_summary = ledger.register_session(
             session_id="ttl-saved",
             media=media,
@@ -409,6 +537,12 @@ class ViewingLedgerTest(unittest.TestCase):
         self.assertTrue(saved.progress.analysis_retained)
         self.assertEqual(saved.completed_analysis_cache_expires_at, "")
 
+        core.create_session(
+            session_id="ttl-complete",
+            media=media,
+            mode=SessionMode(knowledge_mode=KnowledgeMode.KNOWN),
+            capabilities=ClientCapabilities(playback_snapshot=True),
+        )
         ledger.register_session(
             session_id="ttl-complete",
             media=media,

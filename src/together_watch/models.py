@@ -389,7 +389,7 @@ class ViewingProgress:
     played_duration_ms: int
     saved_at: str
     analysis_covered_until_ms: int = 0
-    analysis_retained: bool = True
+    analysis_retained: bool = False
     ticket_back_frame: ViewingFrame | None = None
 
     def __post_init__(self) -> None:

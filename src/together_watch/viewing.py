@@ -5,6 +5,7 @@ import unicodedata
 from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from threading import RLock
+from typing import Protocol
 from uuid import uuid4
 
 from .models import (
@@ -24,6 +25,12 @@ from .models import (
 
 class ViewingError(RuntimeError):
     pass
+
+
+class _AnalysisRetention(Protocol):
+    def retain_viewing_analysis(self, viewing_id: str, session_id: str) -> int | None: ...
+
+    def restore_viewing_analysis(self, viewing_id: str, session_id: str) -> bool: ...
 
 
 DEFAULT_COMPLETED_ANALYSIS_TTL_SECONDS = 24 * 60 * 60
@@ -108,6 +115,7 @@ class ViewingLedger:
         self,
         *,
         completed_analysis_ttl_seconds: int = DEFAULT_COMPLETED_ANALYSIS_TTL_SECONDS,
+        analysis_retention: _AnalysisRetention | None = None,
     ) -> None:
         if (
             isinstance(completed_analysis_ttl_seconds, bool)
@@ -116,6 +124,7 @@ class ViewingLedger:
         ):
             raise ValueError("completed_analysis_ttl_seconds must be a non-negative integer")
         self.completed_analysis_ttl_seconds = completed_analysis_ttl_seconds
+        self._analysis_retention = analysis_retention
         self._viewings: dict[str, _ViewingState] = {}
         self._sessions: dict[str, _SessionState] = {}
         self._lock = RLock()
@@ -186,6 +195,20 @@ class ViewingLedger:
                 )
             elif part.media_id != media.media_id or part.part_index != media.part_index:
                 raise ViewingError("part_key was reused with different media")
+
+            saved_progress = state.progress
+            if saved_progress is not None and saved_progress.analysis_retained:
+                if self._analysis_retention is None:
+                    raise ViewingError("retained analysis storage is unavailable")
+                try:
+                    restored = self._analysis_retention.restore_viewing_analysis(
+                        resolved_id,
+                        session_id,
+                    )
+                except Exception as exc:
+                    raise ViewingError(str(exc)) from exc
+                if not restored:
+                    raise ViewingError("retained analysis is unavailable")
 
             self._sessions[session_id] = _SessionState(
                 session_id=session_id,
@@ -306,8 +329,22 @@ class ViewingLedger:
         now_iso = _iso_from_ms(observed_at_ms)
         with self._lock:
             session = self._session(session_id)
-            session.ended = True
             state = self._viewings[session.viewing_id]
+            retained_until_ms: int | None = None
+            if resolved_action == ViewingExitAction.SAVE_PROGRESS and self._analysis_retention:
+                try:
+                    retained_until_ms = self._analysis_retention.retain_viewing_analysis(
+                        state.viewing_id,
+                        session_id,
+                    )
+                except Exception as exc:
+                    raise ViewingError(str(exc)) from exc
+                if retained_until_ms is not None and analysis_covered_until_ms not in {
+                    0,
+                    retained_until_ms,
+                }:
+                    raise ViewingError("analysis coverage does not match retained analysis")
+            session.ended = True
             state.updated_at = now_iso
             if resolved_action == ViewingExitAction.SAVE_PROGRESS:
                 snapshot = session.previous_snapshot
@@ -330,8 +367,12 @@ class ViewingLedger:
                         part.played_duration_ms for part in state.parts.values()
                     ),
                     saved_at=now_iso,
-                    analysis_covered_until_ms=analysis_covered_until_ms,
-                    analysis_retained=True,
+                    analysis_covered_until_ms=(
+                        retained_until_ms
+                        if retained_until_ms is not None
+                        else 0
+                    ),
+                    analysis_retained=retained_until_ms is not None,
                     ticket_back_frame=state.ticket_back_frame,
                 )
             elif resolved_action == ViewingExitAction.COMPLETE:

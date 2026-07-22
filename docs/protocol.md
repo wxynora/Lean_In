@@ -179,6 +179,14 @@ new session. Raw audio, raw frames, and contact sheets are not retained for resu
 client must reselect the file and prove the same `media_revision`; the host must reject a replacement
 file rather than reuse the old analysis.
 
+In the Python reference, pass the same `WatchCore` instance as
+`ViewingLedger(analysis_retention=watch_core)`. Saving progress calls
+`retain_viewing_analysis(viewing_id, session_id)` and registration of the resumed session calls
+`restore_viewing_analysis(viewing_id, new_session_id)`. A persistent host implements the same two
+operations in its runtime store. If no retention store is connected, the response must report
+`analysis_retained=false` and zero retained coverage instead of returning a marker that has no cache
+behind it.
+
 ## Client Lease
 
 `POST /sessions/{session_id}/heartbeat`

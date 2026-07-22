@@ -66,6 +66,15 @@ time, message time, or a pre-generated reaction script.
   snapshots, preparation gates, local subtitles, sparse frame extraction, risk UI, and host chat
   integration.
 
+The reference Python path wires this behavior with
+`ViewingLedger(analysis_retention=watch_core)`. `save_progress` then retains committed plot chunks,
+risk events, analyzed coverage, the confirmed knowledge card, and the subtitle reference, and a new
+session for the same viewing and part restores them under its own session ID. Without a retention
+adapter, progress remains resumable but reports `analysis_retained=false` and does not claim cached
+coverage. `WatchCore` is the in-process reference; production hosts persist the same retained state in
+their `RuntimeStore` so it survives process restarts. Raw audio, frames, and contact sheets are never
+part of the retained state.
+
 ## Architecture
 
 ```text

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import replace
+from collections.abc import Mapping, Sequence
+from copy import deepcopy
+from dataclasses import dataclass, replace
+from typing import Any
 from uuid import uuid4
 
 from .actions import create_danmaku_action, validate_danmaku_action
@@ -34,6 +36,16 @@ class WatchCoreError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True, slots=True)
+class _RetainedAnalysis:
+    media: MediaDescriptor
+    chunks: tuple[PlotChunk, ...]
+    risks: tuple[RiskEvent, ...]
+    coverage: tuple[tuple[int, int], ...]
+    knowledge_card: dict[str, Any]
+    subtitle_reference: dict[str, Any]
+
+
 class WatchCore:
     def __init__(self, *, recall: PlotRecallAdapter | None = None) -> None:
         self._recall = recall or Bm25PlotRecall()
@@ -42,6 +54,8 @@ class WatchCore:
         self._chunks: dict[str, list[PlotChunk]] = {}
         self._risks: dict[str, list[RiskEvent]] = {}
         self._coverage: dict[str, tuple[tuple[int, int], ...]] = {}
+        self._analysis_references: dict[str, dict[str, dict[str, Any]]] = {}
+        self._retained_analysis: dict[tuple[str, str], _RetainedAnalysis] = {}
         self._creation_keys: dict[str, tuple[tuple[object, ...], str]] = {}
         self._consumed_action_ids: set[str] = set()
 
@@ -77,6 +91,10 @@ class WatchCore:
         self._chunks[resolved_session_id] = []
         self._risks[resolved_session_id] = []
         self._coverage[resolved_session_id] = ()
+        self._analysis_references[resolved_session_id] = {
+            "knowledge_card": {},
+            "subtitle_reference": {},
+        }
         if normalized_key:
             self._creation_keys[normalized_key] = (
                 creation_fingerprint,
@@ -214,6 +232,117 @@ class WatchCore:
         }
         existing.update({(risk.timeline_epoch, risk.risk_id): risk for risk in risks})
         self._risks[session_id] = list(existing.values())
+
+    def set_analysis_references(
+        self,
+        session_id: str,
+        *,
+        knowledge_card: Mapping[str, Any] | None = None,
+        subtitle_reference: Mapping[str, Any] | None = None,
+    ) -> None:
+        self.get_session(session_id)
+        self._analysis_references[session_id] = {
+            "knowledge_card": deepcopy(dict(knowledge_card or {})),
+            "subtitle_reference": deepcopy(dict(subtitle_reference or {})),
+        }
+
+    def analysis_references(self, session_id: str) -> dict[str, dict[str, Any]]:
+        self.get_session(session_id)
+        return deepcopy(self._analysis_references[session_id])
+
+    def retain_viewing_analysis(self, viewing_id: str, session_id: str) -> int | None:
+        clean_viewing_id = str(viewing_id or "").strip()
+        if not clean_viewing_id:
+            raise WatchCoreError("viewing_id is required")
+        session = self.get_session(session_id)
+        references = self._analysis_references[session_id]
+        retained = _RetainedAnalysis(
+            media=session.media,
+            chunks=self._canonical_chunks(session_id),
+            risks=self._canonical_risks(session_id),
+            coverage=self._coverage[session_id],
+            knowledge_card=deepcopy(references["knowledge_card"]),
+            subtitle_reference=deepcopy(references["subtitle_reference"]),
+        )
+        has_analysis = bool(
+            retained.chunks
+            or retained.risks
+            or retained.coverage
+            or retained.knowledge_card
+            or retained.subtitle_reference
+        )
+        if not has_analysis:
+            return None
+        self._retained_analysis[(clean_viewing_id, session.media.part_key)] = retained
+        return max((end_ms for _, end_ms in retained.coverage), default=0)
+
+    def restore_viewing_analysis(self, viewing_id: str, session_id: str) -> bool:
+        clean_viewing_id = str(viewing_id or "").strip()
+        if not clean_viewing_id:
+            raise WatchCoreError("viewing_id is required")
+        session = self.get_session(session_id)
+        retained = self._retained_analysis.get((clean_viewing_id, session.media.part_key))
+        if retained is None:
+            return False
+        if self._media_cache_identity(retained.media) != self._media_cache_identity(session.media):
+            raise WatchCoreError("saved analysis belongs to another media revision")
+        timeline_epoch = session.snapshot.timeline_epoch if session.snapshot is not None else 0
+        self._chunks[session_id] = [
+            replace(
+                chunk,
+                chunk_id=chunk.chunk_id.split("@epoch:", 1)[0],
+                session_id=session_id,
+                timeline_epoch=timeline_epoch,
+            )
+            for chunk in retained.chunks
+        ]
+        self._risks[session_id] = [
+            replace(
+                risk,
+                risk_id=risk.risk_id.split("@epoch:", 1)[0],
+                session_id=session_id,
+                timeline_epoch=timeline_epoch,
+            )
+            for risk in retained.risks
+        ]
+        self._coverage[session_id] = retained.coverage
+        self._analysis_references[session_id] = {
+            "knowledge_card": deepcopy(retained.knowledge_card),
+            "subtitle_reference": deepcopy(retained.subtitle_reference),
+        }
+        return True
+
+    def _canonical_chunks(self, session_id: str) -> tuple[PlotChunk, ...]:
+        unique: dict[tuple[object, ...], PlotChunk] = {}
+        for chunk in self._chunks[session_id]:
+            key = (
+                chunk.start_ms,
+                chunk.end_ms,
+                chunk.summary,
+                chunk.dialogue_summary,
+                chunk.tags,
+                chunk.characters,
+            )
+            unique[key] = chunk
+        return tuple(sorted(unique.values(), key=lambda item: (item.start_ms, item.end_ms)))
+
+    def _canonical_risks(self, session_id: str) -> tuple[RiskEvent, ...]:
+        unique: dict[tuple[object, ...], RiskEvent] = {}
+        for risk in self._risks[session_id]:
+            key = (
+                risk.warn_at_ms,
+                risk.start_ms,
+                risk.end_ms,
+                risk.severity,
+                risk.categories,
+            )
+            unique[key] = risk
+        return tuple(sorted(unique.values(), key=lambda item: (item.warn_at_ms, item.start_ms)))
+
+    @staticmethod
+    def _media_cache_identity(media: MediaDescriptor) -> tuple[str, str, str]:
+        revision = media.local_media.media_revision if media.local_media is not None else ""
+        return media.media_id, media.part_key, revision
 
     def build_context(
         self,

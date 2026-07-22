@@ -20,14 +20,17 @@ export function formatLeadDuration(value) {
   return `${minutes}分${seconds}秒`;
 }
 
-export function analysisCoverageLabel(status, coveredUntilMs, playheadMs) {
+export function analysisCoverageLabel(status, coveredUntilMs, playheadMs, latestJobStatus = "") {
   const normalizedStatus = String(status || "").trim().toLowerCase();
-  if (normalizedStatus === "failed") return "剧情分析不可用";
+  const normalizedJobStatus = String(latestJobStatus || "").trim().toLowerCase();
+  const running = ["queued", "running"].includes(normalizedJobStatus)
+    || ["pending", "analyzing"].includes(normalizedStatus);
+  if (normalizedStatus === "failed") return "剧情分析失败";
+  if (normalizedStatus === "unavailable") return "剧情分析不可用";
   const aheadMs = coverageAheadMs(coveredUntilMs, playheadMs);
+  const lead = `已提前解析 ${formatLeadDuration(aheadMs)}剧情`;
   if (normalizedStatus === "degraded") {
-    return `已提前解析 ${formatLeadDuration(aheadMs)}剧情 · 暂时降级`;
+    return `${lead} · 暂时降级${running ? " · 正在解析后续剧情" : ""}`;
   }
-  return aheadMs > 0
-    ? `已提前解析 ${formatLeadDuration(aheadMs)}剧情`
-    : "正在准备前方剧情";
+  return `${lead}${running ? " · 正在解析后续剧情" : ""}`;
 }

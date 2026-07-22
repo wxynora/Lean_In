@@ -78,6 +78,7 @@ const state = {
   ending: false,
   syncing: false,
   polling: false,
+  statusPollFailures: 0,
   chatRunning: false,
   planInFlight: "",
   localSamplingError: "",
@@ -1323,6 +1324,14 @@ function handleRuntimeError(error) {
   $("#playback-notice").hidden = false;
 }
 
+function handleStatusPollError() {
+  state.statusPollFailures += 1;
+  if (state.statusPollFailures < 2) return;
+  const notice = $("#playback-notice");
+  notice.textContent = "连接暂时不稳，正在重新同步";
+  notice.hidden = false;
+}
+
 async function captureSnapshot() {
   if (!state.session || !state.timeline) return null;
   if (state.source === "local") return snapshotFromVideo($("#local-video"), state.timeline);
@@ -1759,7 +1768,14 @@ async function pollStatus() {
   if (!state.session || state.polling) return;
   state.polling = true;
   try {
-    const payload = await bridge.getStatus(state.session.session_id);
+    let payload;
+    try {
+      payload = await bridge.getStatus(state.session.session_id);
+    } catch {
+      handleStatusPollError();
+      return;
+    }
+    state.statusPollFailures = 0;
     state.status = payload;
     if (payload.playback) updatePlaybackClock(payload.playback);
     renderPreparation(payload);
@@ -1778,6 +1794,8 @@ function renderWatchingStatus(payload) {
     analysis.status,
     analysis.covered_until_ms,
     playheadMs,
+    payload.analysis_runtime?.latest_job?.status
+      || payload.analysis_runtime?.latest_job_status,
   );
   const degradedReason = analysisDegradedReason(analysis, payload.analysis_runtime);
   $("#analysis-degraded-reason").hidden = analysis.status !== "degraded";
@@ -2267,6 +2285,38 @@ async function normalizeCapturedJpeg(blob, suppliedWidth = 0, suppliedHeight = 0
   }
 }
 
+async function assertCapturedFrameIsVisible(blob) {
+  let source;
+  let release = () => {};
+  if (typeof createImageBitmap === "function") {
+    source = await createImageBitmap(blob);
+    release = () => source.close();
+  } else {
+    const url = URL.createObjectURL(blob);
+    source = await new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("当前画面解析失败"));
+      image.src = url;
+    });
+    release = () => URL.revokeObjectURL(url);
+  }
+  try {
+    const sample = document.createElement("canvas");
+    sample.width = 16;
+    sample.height = 12;
+    const context = sample.getContext("2d", { alpha: false });
+    context.drawImage(source, 0, 0, sample.width, sample.height);
+    const pixels = context.getImageData(0, 0, sample.width, sample.height).data;
+    for (let index = 0; index < pixels.length; index += 4) {
+      if (pixels[index] > 3 || pixels[index + 1] > 3 || pixels[index + 2] > 3) return;
+    }
+    throw new Error("没有读取到视频画面，请重新截取");
+  } finally {
+    release();
+  }
+}
+
 async function captureLocalVideoFrame() {
   const video = $("#local-video");
   if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
@@ -2279,6 +2329,7 @@ async function captureLocalVideoFrame() {
   canvas.height = video.videoHeight;
   canvas.getContext("2d", { alpha: false }).drawImage(video, 0, 0);
   const blob = await canvasBlob(canvas);
+  await assertCapturedFrameIsVisible(blob);
   return {
     blob,
     atMs: Math.round(video.currentTime * 1000),
@@ -2305,9 +2356,11 @@ async function captureCurrentVideoFrame() {
   try {
     let captured;
     if (state.source === "local") {
+      state.captureWasPlaying = state.captureWasPlaying || !$("#local-video").paused;
       captured = await captureLocalVideoFrame();
     } else {
       const snapshot = await captureSnapshot();
+      state.captureWasPlaying = state.captureWasPlaying || Boolean(snapshot?.is_playing);
       const raw = await bridge.captureVideoFrame({
         session_id: state.session.session_id,
         media: state.session.media,
@@ -2318,6 +2371,7 @@ async function captureCurrentVideoFrame() {
         raw?.width,
         raw?.height,
       );
+      await assertCapturedFrameIsVisible(normalized.blob);
       captured = {
         ...normalized,
         atMs: Number(raw?.at_ms ?? snapshot?.playhead_ms ?? 0),

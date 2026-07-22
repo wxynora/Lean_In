@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable
 
 from .models import (
     ContextEnvelope,
@@ -13,6 +13,63 @@ from .models import (
     WatchSession,
 )
 from .prompts import PromptBundle
+
+
+class SourceCandidateFailure(RuntimeError):
+    """One signed source URL failed and another candidate may still work."""
+
+
+class SourceSamplingFailure(RuntimeError):
+    """Every candidate failed, including one fresh URL resolution."""
+
+
+def sample_frames_with_refresh(
+    timestamps_ms: Sequence[int],
+    *,
+    resolve_stream_urls: Callable[[], Sequence[str]],
+    extract_frame: Callable[[str, int], bytes],
+    on_candidate_failure: Callable[[int, int, int, Exception], None] | None = None,
+) -> tuple[tuple[int, bytes], ...]:
+    """Sample frames sequentially from fresh signed URLs with ordered fallback."""
+
+    def normalized_urls() -> list[str]:
+        urls: list[str] = []
+        for value in resolve_stream_urls():
+            url = str(value or "").strip()
+            if url and url not in urls:
+                urls.append(url)
+        if not urls:
+            raise SourceSamplingFailure("source resolver returned no stream candidates")
+        return urls
+
+    def extract_one(urls: list[str], at_ms: int) -> tuple[bytes, list[str]]:
+        last_failure: SourceCandidateFailure | None = None
+        for index, url in enumerate(urls):
+            try:
+                frame = bytes(extract_frame(url, at_ms) or b"")
+                if not frame:
+                    raise SourceCandidateFailure("candidate returned an empty frame")
+            except SourceCandidateFailure as exc:
+                last_failure = exc
+                if on_candidate_failure is not None:
+                    on_candidate_failure(at_ms, index + 1, len(urls), exc)
+                continue
+            if index > 0:
+                urls = [url, *(candidate for candidate in urls if candidate != url)]
+            return frame, urls
+        raise SourceSamplingFailure("all source stream candidates failed") from last_failure
+
+    ordered_urls = normalized_urls()
+    samples: list[tuple[int, bytes]] = []
+    for value in timestamps_ms:
+        at_ms = max(0, int(value))
+        try:
+            frame, ordered_urls = extract_one(ordered_urls, at_ms)
+        except SourceSamplingFailure:
+            ordered_urls = normalized_urls()
+            frame, ordered_urls = extract_one(ordered_urls, at_ms)
+        samples.append((at_ms, frame))
+    return tuple(samples)
 
 
 @runtime_checkable

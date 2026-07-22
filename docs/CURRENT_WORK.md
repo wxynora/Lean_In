@@ -1,5 +1,16 @@
 # Current Work
 
+## LEAN-IN-BILIBILI-STREAM-FALLBACK-20260723
+
+- Mode: construction
+- Status: complete
+- Objective: synchronize the proven Bilibili analysis-source behavior from the private gateway into the open-source host adapter boundary: request 480P AVC, refresh signed playback URLs per analysis batch, extract frames sequentially, promote a working backup URL, and refresh/retry only the current frame after every candidate fails.
+- Evidence scope: `src/together_watch/adapters.py`, the source-acquisition sections of `docs/{architecture,protocol}.md` and `README.md`, plus one new focused adapter test if no existing test owns this behavior.
+- Write scope: exactly the evidence files above and this task section in `docs/CURRENT_WORK.md`.
+- Excluded: private gateway code/configuration, unrelated Web UI, model prompts, subtitles, viewing/resume state, deployment, and external source requests.
+- Acceptance: candidate fallback is reusable by host implementations without private dependencies; a successful backup becomes the next frame's first candidate; all-candidate failure refreshes signed URLs and retries only that frame once; per-candidate failure is non-alerting while final failure remains explicit; one focused test and scoped diff check pass.
+- Verification: `PYTHONPATH=src python3 tests/test_adapters.py` passed 1 focused test; `cd web && npm test` passed 33 tests; scoped `git diff --check` passed. No full Python test suite, build, external source request, or deployment was performed.
+
 ## LEAN-IN-TICKET-CAPTURES-20260722
 
 - Mode: construction

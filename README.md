@@ -337,6 +337,11 @@ The browser client exports sparse JPEG frames with a hidden `<video>` element. I
 `can_export_audio=false`; a native or desktop host may provide the selected short audio window. The
 gateway must degrade honestly when audio is unavailable instead of pretending it received audio.
 
+For server-readable network sources, `sample_frames_with_refresh()` provides the reference fallback
+loop. It resolves signed URLs for each analysis batch, samples sequentially, promotes a working backup
+URL, and refreshes once to retry only the current frame after all candidates fail. A Bilibili adapter
+should request 480P (`qn=32`) DASH, prefer AVC, and keep signed URLs and credentials inside the host.
+
 ## Preparation and Start Gate
 
 Playback remains paused while preparation is visible. Typical states are:

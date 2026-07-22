@@ -2696,7 +2696,6 @@ $("#watch-end-save").addEventListener("click", () => {
 });
 $("#watch-end-dialog").addEventListener("cancel", (event) => {
   event.preventDefault();
-  closeWatchEndDialog();
 });
 $("#ticket-image-input").addEventListener("change", async (event) => {
   const file = event.target.files?.[0];

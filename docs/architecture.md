@@ -79,6 +79,19 @@ share the same evidence and spoiler boundaries without inheriting private produc
 | `ActionTransport` | Deliver validated timed actions to the correct client session. |
 | `RuntimeStore` | Persist sessions, leases, jobs, plans, chunks, risks, viewings, tickets, and idempotency records. |
 
+### Network Source Sampling
+
+Server-side source adapters should resolve fresh signed playback URLs at the start of every analysis
+batch and extract target frames sequentially. Within one batch, a backup URL that succeeds becomes
+the first candidate for later frames. If every candidate fails, resolve the URLs again and retry only
+the current frame; do not discard or repeat frames already captured in that batch. Candidate-level
+failures are diagnostic events, while only an all-candidate failure is an alerting failure.
+
+`sample_frames_with_refresh()` implements this provider-neutral ordering and retry contract. A
+Bilibili host can supply a resolver that requests `qn=32` with DASH enabled and selects an AVC stream
+plus its backup URLs. Signed URLs, cookies, and request headers remain inside the host adapter and
+must not appear in logs.
+
 ## Media Identity and Time
 
 Every request is tied to four values:

@@ -294,6 +294,19 @@ The response is intentionally additive. The reference Web client reads these are
 Clients render server truth. `pending`, `degraded`, or `failed` analysis must not be shown as ready
 or protected.
 
+## Server-side Network Source Sampling
+
+A host that samples a network-accessible source resolves fresh signed stream URLs once per analysis
+batch and processes frame timestamps in media-time order. A successful backup URL is promoted for
+the rest of that batch. When all candidates fail at one timestamp, the host refreshes the signed URLs
+and retries only that timestamp once; previously captured frames stay intact. Per-candidate fallback
+is non-alerting. Only failure after the fresh resolution is a terminal source-sampling failure.
+
+The portable `sample_frames_with_refresh()` helper owns this ordering but not provider HTTP calls or
+media decoding. For Bilibili, the recommended low-cost resolver requests 480P (`qn=32`) DASH and
+prefers AVC before exposing the selected representation's primary and backup URLs to the helper.
+Hosts must not expose or log signed URLs, cookies, or source request headers.
+
 ## Client Sample Plan
 
 A local session may receive this in status:

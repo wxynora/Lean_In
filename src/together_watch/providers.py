@@ -55,11 +55,32 @@ class KnowledgeSearchConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class TmdbIdentityConfig:
+    """Optional work-identity resolver used before a manual subtitle retry."""
+
+    enabled: bool = False
+    endpoint: str = "https://api.themoviedb.org/3"
+    read_access_token_env: str = "TOGETHER_WATCH_TMDB_READ_ACCESS_TOKEN"
+    language: str = "zh-CN"
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.enabled, bool):
+            raise ValueError("tmdb_identity.enabled must be a boolean")
+        if self.enabled and not self.endpoint.strip():
+            raise ValueError("enabled TMDB identity lookup requires an endpoint")
+        if self.enabled and not self.read_access_token_env.strip():
+            raise ValueError(
+                "enabled TMDB identity lookup requires read_access_token_env"
+            )
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderSettings:
     analysis_model: ModelProviderConfig
     knowledge_model: ModelProviderConfig
     knowledge_search: KnowledgeSearchConfig = field(default_factory=KnowledgeSearchConfig)
     subtitle_lookup: SubtitleLookupPolicy = field(default_factory=SubtitleLookupPolicy)
+    tmdb_identity: TmdbIdentityConfig = field(default_factory=TmdbIdentityConfig)
 
     @classmethod
     def from_mapping(cls, value: Mapping[str, Any]) -> ProviderSettings:
@@ -67,17 +88,21 @@ class ProviderSettings:
         knowledge = value.get("knowledge_model")
         search = value.get("knowledge_search", {})
         subtitle_lookup = value.get("subtitle_lookup", {})
+        tmdb_identity = value.get("tmdb_identity", {})
         if not isinstance(analysis, Mapping) or not isinstance(knowledge, Mapping):
             raise ValueError("analysis_model and knowledge_model must be objects")
         if not isinstance(search, Mapping):
             raise ValueError("knowledge_search must be an object")
         if not isinstance(subtitle_lookup, Mapping):
             raise ValueError("subtitle_lookup must be an object")
+        if not isinstance(tmdb_identity, Mapping):
+            raise ValueError("tmdb_identity must be an object")
         return cls(
             analysis_model=ModelProviderConfig(**dict(analysis)),
             knowledge_model=ModelProviderConfig(**dict(knowledge)),
             knowledge_search=KnowledgeSearchConfig(**dict(search)),
             subtitle_lookup=SubtitleLookupPolicy(**dict(subtitle_lookup)),
+            tmdb_identity=TmdbIdentityConfig(**dict(tmdb_identity)),
         )
 
 

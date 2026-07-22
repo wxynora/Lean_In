@@ -89,13 +89,41 @@ globalThis.TogetherWatchHost = {
   async openChat() {
     router.openChat();
   },
+
+  async restorePlaybackPosition({ playhead_ms }) {
+    await player.seekTo(playhead_ms);
+  },
+
+  async captureVideoFrame({ playback }) {
+    const wasPlaying = playback.is_playing;
+    await player.pause();
+    const frame = await player.captureCurrentFrameAsJpeg();
+    return {
+      blob: frame.blob,
+      width: frame.width,
+      height: frame.height,
+      at_ms: playback.playhead_ms,
+      was_playing: wasPlaying,
+      captured_at: new Date().toISOString(),
+    };
+  },
+
+  async resumePlaybackAfterCapture() {
+    await player.play();
+  },
 };
 ```
 
 `getPlaybackSnapshot` is required only for Bilibili/other cross-origin players. Local files use the
 native `<video>` media clock directly. `sendMessage` is required to enable the chat input. If it is
 absent, playback and analysis remain functional and the UI states clearly that chat is not connected;
-it does not fabricate replies.
+it does not fabricate replies. Cross-origin Recent Watch resume additionally requires
+`restorePlaybackPosition`; the reference client reports the missing capability instead of starting
+at zero. Cross-origin ticket screenshots require `captureVideoFrame`, which must pause the player
+before returning a pure video-frame JPEG `Blob` and its real pixel dimensions. The reference client
+can normalize another decodable image format to JPEG, but dimensions are still part of the upload
+contract. `resumePlaybackAfterCapture` resumes only when the frame was taken during playback. Local
+`<video>` implements all three behaviors directly.
 
 ## Local Video Flow
 
@@ -225,11 +253,36 @@ Risk events come from `status.upcoming_risks`. The client only reacts to confirm
 uses `warn_at_ms`, `start_ms`, and `end_ms`. `warn_only` shows a warning; `cover_video` places a
 locally dismissible cover above the picture. The bypass applies to that risk event only.
 
+## Recent Watch, Ticket Screenshots, and the Ticket Shelf
+
+The setup page reads `GET /viewings?status=recent`. A resumable item keeps its `viewing_id` when it
+creates the next session and restores the authoritative playhead. Local files are reselected and the
+saved `media_revision` must match before the client continues. Completed items open their stable
+ticket instead of creating another watch session.
+
+After playback unlocks, the frame button captures only the video picture. The user sees a preview
+and chooses either “保存这张” or “重新截取”; no image is uploaded before confirmation. Confirmed
+frames are posted as multipart data to
+`/viewings/{viewing_id}/ticket-frame-captures`. The ticket detail later lists all captures for the
+same viewing and selects one through `/viewings/{viewing_id}/ticket-frame`. Browser-local back images
+and edited avatars stay in the local ticket shelf and are never silently uploaded.
+
+The multipart `metadata` object contains `session_id`, `media_id`, `timeline_epoch`, `at_ms`,
+`width`, `height`, and `mime_type=image/jpeg`; the file field is `image`. The gateway verifies the
+authenticated session/viewing/media/epoch relationship and the real JPEG dimensions before storing
+the capture outside temporary analysis-frame retention.
+
+The ticket face uses the Lean In name, a horizontal 2:1 cinema-ticket layout, two editable avatars,
+and the saved trusted viewing duration. Clicking it flips to the selected back frame; the viewer may
+change that frame later without reopening an active watch session.
+
 ## Session End and Failure Recovery
 
-The player top-bar back action, the return-to-setup menu action, and browser/system history back all
-call `DELETE /sessions/{id}` before returning to setup. Switching parts also ends the old session
-before creating the next one. Each successful DELETE response contributes its `analysis_cost` once,
+The visible back, return-to-setup, and “结束本次一起看” actions first ask for either 保存进度 or 已看完.
+Those choices call DELETE with `viewing_action=save_progress` or `viewing_action=complete`. There is
+no redundant “继续看” button; closing the choice dialog keeps the current session. Switching parts,
+`pagehide`, and browser/system cleanup use plain DELETE and create neither saved progress nor a
+ticket. Each successful DELETE response contributes its `analysis_cost` once,
 keyed by session ID. Part switches accumulate silently; normal return and end flows show the total
 analysis-provider cost across the parts watched in that run. Incomplete totals never present an unknown
 zero as free usage. Finished calls without provider pricing are also shown as unpriced rather than
@@ -249,6 +302,15 @@ The client implementation in `lib/api.js` calls:
 
 ```text
 GET    /sessions
+GET    /viewings?status=recent
+GET    /viewings/{id}
+GET    /viewings/{id}/ticket-frame-captures
+POST   /viewings/{id}/ticket-frame-captures
+GET    /viewings/{id}/ticket-frame-captures/{capture_id}/image
+PUT    /viewings/{id}/ticket-frame
+DELETE /viewings/{id}/ticket-frame
+GET    /tickets
+PUT    /tickets/{id}
 POST   /sessions
 GET    /sessions/{id}/status
 POST   /sessions/{id}/heartbeat

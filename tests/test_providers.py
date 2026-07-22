@@ -23,6 +23,11 @@ class ProviderSettingsTests(unittest.TestCase):
         self.assertEqual(settings.subtitle_lookup.request_timeout_seconds, 15)
         self.assertEqual(settings.subtitle_lookup.lookup_timeout_seconds, 45)
         self.assertEqual(settings.subtitle_lookup.automatic_attempts, 1)
+        self.assertFalse(settings.tmdb_identity.enabled)
+        self.assertEqual(
+            settings.tmdb_identity.read_access_token_env,
+            "TOGETHER_WATCH_TMDB_READ_ACCESS_TOKEN",
+        )
 
     def test_search_query_prefers_original_title_and_keeps_episode_context(self) -> None:
         query = build_knowledge_search_query(

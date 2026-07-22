@@ -62,8 +62,40 @@ export class WatchHostBridge {
     return this.api.uploadSamples(sessionId, metadata, files);
   }
 
-  endSession(sessionId) {
-    return this.api.endSession(sessionId);
+  endSession(sessionId, options) {
+    return this.api.endSession(sessionId, options);
+  }
+
+  listViewings(options) {
+    return this.api.listViewings(options);
+  }
+
+  getViewing(viewingId) {
+    return this.api.getViewing(viewingId);
+  }
+
+  listTicketFrameCaptures(viewingId) {
+    return this.api.listTicketFrameCaptures(viewingId);
+  }
+
+  uploadTicketFrameCapture(viewingId, metadata, image) {
+    return this.api.uploadTicketFrameCapture(viewingId, metadata, image);
+  }
+
+  selectTicketFrameCapture(viewingId, captureId) {
+    return this.api.selectTicketFrameCapture(viewingId, captureId);
+  }
+
+  clearTicketFrame(viewingId) {
+    return this.api.clearTicketFrame(viewingId);
+  }
+
+  listTickets() {
+    return this.api.listTickets();
+  }
+
+  updateTicketTitle(ticketId, title) {
+    return this.api.updateTicketTitle(ticketId, title);
   }
 
   canTrackBilibiliPlayback() {
@@ -72,6 +104,28 @@ export class WatchHostBridge {
 
   getPlaybackSnapshot(payload) {
     return this.callHost("getPlaybackSnapshot", payload);
+  }
+
+  canCaptureVideoFrame() {
+    return typeof this.host?.captureVideoFrame === "function";
+  }
+
+  captureVideoFrame(payload) {
+    return this.callHost("captureVideoFrame", payload);
+  }
+
+  resumePlaybackAfterCapture(payload) {
+    if (typeof this.host?.resumePlaybackAfterCapture !== "function") return Promise.resolve();
+    return this.callHost("resumePlaybackAfterCapture", payload);
+  }
+
+  canRestorePlaybackPosition() {
+    return typeof this.host?.restorePlaybackPosition === "function";
+  }
+
+  restorePlaybackPosition(payload) {
+    if (typeof this.host?.restorePlaybackPosition !== "function") return Promise.resolve(false);
+    return this.callHost("restorePlaybackPosition", payload).then(() => true);
   }
 
   canSendMessage() {

@@ -44,3 +44,82 @@ test("gateway client exposes structured API failures", async () => {
       && error.code === "client_lease_expired",
   );
 });
+
+test("explicit viewing actions are distinct from internal session cleanup", async () => {
+  const calls = [];
+  const client = new WatchApiClient(
+    { gatewayBaseUrl: "https://gateway.example" },
+    async (url, options) => {
+      calls.push({ url: String(url), method: options.method });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  );
+
+  await client.endSession("watch-1");
+  await client.endSession("watch-2", { viewingAction: "save_progress" });
+  await client.endSession("watch-3", { viewingAction: "complete" });
+
+  assert.equal(calls[0].url, "https://gateway.example/miniapp-api/watch/sessions/watch-1");
+  assert.equal(
+    calls[1].url,
+    "https://gateway.example/miniapp-api/watch/sessions/watch-2?viewing_action=save_progress",
+  );
+  assert.equal(
+    calls[2].url,
+    "https://gateway.example/miniapp-api/watch/sessions/watch-3?viewing_action=complete",
+  );
+});
+
+test("viewing and ticket-frame APIs preserve the explicit capture contract", async () => {
+  const calls = [];
+  const client = new WatchApiClient(
+    { gatewayBaseUrl: "https://gateway.example" },
+    async (url, options) => {
+      calls.push({ url: String(url), options });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  );
+
+  await client.listViewings({ status: "recent", windowId: "web-window" });
+  await client.listTicketFrameCaptures("viewing-1");
+  await client.uploadTicketFrameCapture(
+    "viewing-1",
+    {
+      session_id: "watch-1",
+      media_id: "media-1",
+      timeline_epoch: 2,
+      at_ms: 42_000,
+      width: 1280,
+      height: 720,
+      mime_type: "image/jpeg",
+    },
+    new Blob(["frame"], { type: "image/jpeg" }),
+  );
+  await client.selectTicketFrameCapture("viewing-1", "capture-1");
+  await client.clearTicketFrame("viewing-1");
+
+  assert.equal(
+    calls[0].url,
+    "https://gateway.example/miniapp-api/watch/viewings?status=recent&window_id=web-window",
+  );
+  assert.equal(calls[1].options.method, "GET");
+  assert.equal(calls[2].options.method, "POST");
+  assert.ok(calls[2].options.body instanceof FormData);
+  assert.deepEqual(JSON.parse(calls[2].options.body.get("metadata")), {
+    session_id: "watch-1",
+    media_id: "media-1",
+    timeline_epoch: 2,
+    at_ms: 42_000,
+    width: 1280,
+    height: 720,
+    mime_type: "image/jpeg",
+  });
+  assert.equal(calls[3].options.method, "PUT");
+  assert.equal(calls[4].options.method, "DELETE");
+});

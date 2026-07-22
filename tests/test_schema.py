@@ -14,6 +14,11 @@ class SchemaTest(unittest.TestCase):
         self.assertIn("playbackSnapshot", schema["$defs"])
         self.assertIn("clientCapabilities", schema["$defs"])
         self.assertIn("analysisCost", schema["$defs"])
+        self.assertIn("viewingSummary", schema["$defs"])
+        self.assertIn("viewingTicket", schema["$defs"])
+        self.assertIn("viewingProgress", schema["$defs"])
+        self.assertIn("viewingFrame", schema["$defs"])
+        self.assertIn("viewingFrameCapture", schema["$defs"])
         self.assertIn("danmakuToolInput", schema["$defs"])
 
 

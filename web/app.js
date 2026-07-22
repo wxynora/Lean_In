@@ -25,6 +25,17 @@ import {
   pauseConversationFollow,
 } from "./lib/conversation.js";
 import { PlaybackTimeline, snapshotFromVideo } from "./lib/timeline.js";
+import {
+  createTicketStore,
+  createViewingDurationAccumulator,
+  detachViewingDuration,
+  formatTicketDuration,
+  normalizeRecentViewing,
+  normalizeTicket,
+  normalizeTicketCapture,
+  observeViewingDuration,
+  updateTicketAvatar,
+} from "./lib/tickets.js";
 
 
 const $ = (selector) => document.querySelector(selector);
@@ -36,6 +47,7 @@ const companionName = new URLSearchParams(location.search).get("companion")
   || config.companion?.name
   || document.documentElement.dataset.companionName
   || "{assistant}";
+const ticketStore = createTicketStore();
 
 const state = {
   page: "confirm",
@@ -76,9 +88,25 @@ const state = {
   conversationFollow: createConversationFollowState(),
   ignoreConversationScroll: false,
   fallbackStreamMessageId: "",
+  viewingId: "",
+  viewingDuration: createViewingDurationAccumulator(),
+  viewedPartLabels: new Set(),
+  currentEndTicket: null,
+  endTicketSaved: false,
+  endAction: "",
+  resumeViewing: null,
+  resumePlayheadMs: 0,
+  ticketCaptures: [],
+  ticketCapturesLoading: false,
+  capturePreview: null,
+  captureWasPlaying: false,
+  captureBusy: false,
+  selectedTicket: null,
+  ticketFlipped: false,
+  ticketAssetRole: "",
 };
 
-let analysisCostDialogDestination = null;
+let watchEndDialogDestination = null;
 
 for (const node of $$('[data-companion]')) node.textContent = companionName;
 
@@ -86,6 +114,7 @@ function setPage(name, { historyMode = "none" } = {}) {
   state.page = name;
   $("#confirm-page").hidden = name !== "confirm";
   $("#player-page").hidden = name !== "player";
+  $("#tickets-page").hidden = name !== "tickets";
   if (historyMode === "replace") {
     history.replaceState({ ...(history.state || {}), [WATCH_PAGE_STATE_KEY]: name }, "");
   } else if (historyMode === "push" && history.state?.[WATCH_PAGE_STATE_KEY] !== name) {
@@ -124,39 +153,91 @@ function recordEndedSessionCost(sessionId, payload) {
   );
 }
 
-function closeAnalysisCostDialog() {
-  const dialog = $("#analysis-cost-dialog");
+function closeWatchEndDialog() {
+  const dialog = $("#watch-end-dialog");
   if (dialog.open) dialog.close();
-  const destination = analysisCostDialogDestination;
-  analysisCostDialogDestination = null;
+  const destination = watchEndDialogDestination;
+  watchEndDialogDestination = null;
+  state.currentEndTicket = null;
+  state.endTicketSaved = false;
   destination?.();
 }
 
-function showAnalysisCostDialog(accumulator, destination = null) {
+function setEndChoiceBusy(action = "") {
+  state.endAction = action;
+  const busy = Boolean(action);
+  $("#watch-end-choice-close").disabled = busy;
+  $("#save-progress-button").disabled = busy;
+  $("#complete-viewing-button").disabled = busy;
+  $("#save-progress-button").textContent = action === "save_progress"
+    ? "正在保存…"
+    : "保存进度";
+  $("#complete-viewing-button").textContent = action === "complete"
+    ? "正在结束…"
+    : "已看完";
+}
+
+function showEndChoiceDialog() {
+  if (!state.session || state.ending) return;
+  setEndChoiceBusy();
+  $("#watch-end-choice-dialog").showModal();
+}
+
+function closeEndChoiceDialog() {
+  if (state.endAction) return;
+  const dialog = $("#watch-end-choice-dialog");
+  if (dialog.open) dialog.close();
+}
+
+function renderAnalysisCost(accumulator) {
   const presentation = analysisCostPresentation(accumulator);
-  $("#analysis-cost-title").textContent = "本次剧情解析费用";
   $("#analysis-cost-amount").textContent = presentation.amountText;
   $("#analysis-cost-amount").hidden = !presentation.amountText;
   $("#analysis-cost-status").textContent = presentation.statusText;
   $("#analysis-cost-detail").textContent = presentation.detailText;
-  $("#analysis-cost-detail").hidden = false;
-  analysisCostDialogDestination = destination;
-  $("#analysis-cost-dialog").showModal();
+  $("#analysis-cost-detail").hidden = !presentation.detailText;
+}
+
+function showWatchEndDialog(ticket, accumulator, destination = null, { savedProgress = false } = {}) {
+  state.currentEndTicket = ticket ? normalizeTicket(ticket) : null;
+  state.endTicketSaved = false;
+  $("#watch-end-title").textContent = state.currentEndTicket
+    ? "这场一起看，收好啦"
+    : savedProgress
+      ? "进度已经保存"
+      : "这场一起看已结束";
+  $("#watch-end-ticket").hidden = !state.currentEndTicket;
+  $("#watch-end-ticket").replaceChildren(
+    ...(state.currentEndTicket ? [renderTicketCard(state.currentEndTicket)] : []),
+  );
+  $("#analysis-cost-title").textContent = "本次剧情解析费用";
+  renderAnalysisCost(accumulator);
+  $("#watch-end-dismiss").hidden = !state.currentEndTicket;
+  $("#watch-end-save").textContent = state.currentEndTicket ? "保存到票夹" : "完成";
+  watchEndDialogDestination = destination;
+  $("#watch-end-dialog").showModal();
 }
 
 function showAnalysisCostUnavailable() {
+  state.currentEndTicket = null;
+  $("#watch-end-title").textContent = "结束暂未完成";
+  $("#watch-end-ticket").hidden = true;
   $("#analysis-cost-title").textContent = "费用暂时无法获取";
   $("#analysis-cost-amount").hidden = true;
   $("#analysis-cost-status").textContent = "结束请求没有成功，当前没有生成或推测任何费用。关闭后可以重新结束一次。";
   $("#analysis-cost-detail").hidden = true;
-  analysisCostDialogDestination = null;
-  $("#analysis-cost-dialog").showModal();
+  $("#watch-end-dismiss").hidden = true;
+  $("#watch-end-save").textContent = "知道了";
+  watchEndDialogDestination = null;
+  $("#watch-end-dialog").showModal();
 }
 
-function finishAnalysisCostTracking(destination = null) {
+function finishAnalysisCostTracking(ticket, destination = null, options = {}) {
   const total = state.analysisCost;
   resetAnalysisCostTracking();
-  if (total.recordedSessionIds.size > 0) showAnalysisCostDialog(total, destination);
+  if (ticket || options.savedProgress || total.recordedSessionIds.size > 0) {
+    showWatchEndDialog(ticket, total, destination, options);
+  }
   else destination?.();
 }
 
@@ -169,6 +250,319 @@ function selectedTitle() {
   if (explicit) return explicit;
   if (state.source === "local") return titleFromFileName(state.localFile?.name || "");
   return $("#bilibili-input").value.trim();
+}
+
+function ticketDate(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { day: "", time: "" };
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type)?.value || "";
+  return {
+    day: `${part("year")}.${part("month")}.${part("day")}`,
+    time: `${part("hour")}:${part("minute")}`,
+  };
+}
+
+function avatarFallback(value, defaultValue) {
+  const cleaned = String(value || "").replace(/[{}]/g, "").trim();
+  return cleaned.slice(0, 1).toUpperCase() || defaultValue;
+}
+
+function ticketIdentityFallback() {
+  return {
+    companion: {
+      id: config.companion?.id || "companion",
+      name: companionName,
+      avatar_url: config.companion?.avatarUrl || config.companion?.avatar_url || "",
+    },
+    viewer: {
+      name: config.viewer?.name || "我",
+      avatar_url: config.viewer?.avatarUrl || config.viewer?.avatar_url || "",
+    },
+  };
+}
+
+function fillTicketAvatar(root, selector, url, fallback, alt) {
+  const avatar = root.querySelector(selector);
+  const image = avatar.querySelector("img");
+  const fallbackNode = avatar.querySelector("b");
+  fallbackNode.textContent = fallback;
+  if (url) {
+    image.src = url;
+    image.alt = alt;
+    image.hidden = false;
+    fallbackNode.hidden = true;
+  }
+}
+
+function renderTicketCard(value) {
+  const ticket = normalizeTicket(value);
+  const card = $("#ticket-card-template").content.firstElementChild.cloneNode(true);
+  const date = ticketDate(ticket.ended_at);
+  card.querySelector(".ticket-date").textContent = date.day;
+  card.querySelector(".ticket-time").textContent = date.time;
+  card.querySelector(".ticket-duration").textContent = formatTicketDuration(
+    ticket.played_duration_ms,
+  );
+  card.querySelector(".ticket-work-title").textContent = ticket.title;
+  fillTicketAvatar(
+    card,
+    ".ticket-companion-avatar",
+    ticket.companion.avatar_url,
+    avatarFallback(ticket.companion.name, "A"),
+    ticket.companion.name,
+  );
+  fillTicketAvatar(
+    card,
+    ".ticket-viewer-avatar",
+    ticket.viewer.avatar_url,
+    avatarFallback(ticket.viewer.name, "我"),
+    ticket.viewer.name,
+  );
+  return card;
+}
+
+function renderTicketBack(value) {
+  const ticket = normalizeTicket(value);
+  const card = $("#ticket-back-template").content.firstElementChild.cloneNode(true);
+  const imageUrl = ticket.local_back_image_url || ticket.server_back_frame_url;
+  const image = card.querySelector(".ticket-back-image");
+  if (imageUrl) {
+    image.src = imageUrl;
+    image.hidden = false;
+    card.querySelector(".ticket-back-empty").hidden = true;
+  }
+  card.querySelector(".ticket-back-title").textContent = ticket.title;
+  return card;
+}
+
+function ticketFromViewingPayload(payload) {
+  return payload?.ticket || payload?.viewing_summary?.ticket || payload?.viewing?.ticket || null;
+}
+
+function saveAndSelectTicket(value) {
+  const saved = ticketStore.save(normalizeTicket(value, ticketIdentityFallback()));
+  state.selectedTicket = saved;
+  if (state.currentEndTicket?.ticket_id === saved.ticket_id) state.currentEndTicket = saved;
+  renderTicketFolder();
+  return saved;
+}
+
+function renderTicketCapturePicker() {
+  const list = $("#ticket-captures-list");
+  list.replaceChildren();
+  const ticket = state.selectedTicket;
+  $("#ticket-captures-state").textContent = state.ticketCapturesLoading
+    ? "读取中…"
+    : state.ticketCaptures.length
+      ? `${state.ticketCaptures.length} 张`
+      : "暂无画面";
+  for (const frame of state.ticketCaptures) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ticket-capture-option";
+    button.classList.toggle("is-selected", frame.frame_id === ticket?.server_back_frame_id);
+    const image = document.createElement("img");
+    image.src = frame.image_url;
+    image.alt = `${formatMediaTime(frame.at_ms)} 截下的画面`;
+    const time = document.createElement("time");
+    time.textContent = formatMediaTime(frame.at_ms);
+    button.append(image, time);
+    button.addEventListener("click", () => selectTicketCapture(frame));
+    list.append(button);
+  }
+}
+
+function renderTicketDetail() {
+  if (!state.selectedTicket) return;
+  const ticket = normalizeTicket(state.selectedTicket);
+  state.selectedTicket = ticket;
+  $("#ticket-detail-title").textContent = state.ticketFlipped ? "票根背面" : "一起看的票根";
+  $("#ticket-detail-card").replaceChildren(
+    state.ticketFlipped ? renderTicketBack(ticket) : renderTicketCard(ticket),
+  );
+  $("#ticket-flip-hint").textContent = state.ticketFlipped
+    ? "点票面可翻回正面"
+    : "点票面可查看背面";
+  $("#ticket-flip-button").textContent = state.ticketFlipped ? "翻回正面" : "查看背面";
+  $("#ticket-front-actions").hidden = state.ticketFlipped;
+  $("#ticket-back-actions").hidden = !state.ticketFlipped;
+  $("#clear-ticket-back-image").hidden = !(
+    ticket.local_back_image_url || ticket.server_back_frame_url
+  );
+  if (state.ticketFlipped) renderTicketCapturePicker();
+}
+
+async function loadTicketCaptures(viewingId) {
+  state.ticketCaptures = [];
+  state.ticketCapturesLoading = true;
+  $("#ticket-captures-error").hidden = true;
+  $("#ticket-captures-state").textContent = "读取中…";
+  renderTicketCapturePicker();
+  if (!viewingId) {
+    state.ticketCapturesLoading = false;
+    renderTicketCapturePicker();
+    return;
+  }
+  try {
+    const payload = await bridge.listTicketFrameCaptures(viewingId);
+    state.ticketCaptures = (payload.captures || [])
+      .map(normalizeTicketCapture)
+      .filter((frame) => frame.frame_id && frame.image_url);
+  } catch (error) {
+    $("#ticket-captures-error").textContent = error.message || "自选画面读取失败";
+    $("#ticket-captures-error").hidden = false;
+  }
+  state.ticketCapturesLoading = false;
+  renderTicketCapturePicker();
+}
+
+function ticketFromFrameSelection(payload, frame = null) {
+  const serverTicket = ticketFromViewingPayload(payload);
+  if (serverTicket) return normalizeTicket(serverTicket, state.selectedTicket || {});
+  return normalizeTicket({
+    ...(state.selectedTicket || {}),
+    server_back_frame_id: frame?.frame_id || "",
+    server_back_frame_url: frame?.image_url || "",
+  });
+}
+
+async function selectTicketCapture(frame) {
+  if (!state.selectedTicket?.viewing_id) return;
+  $("#ticket-captures-error").hidden = true;
+  try {
+    const payload = await bridge.selectTicketFrameCapture(
+      state.selectedTicket.viewing_id,
+      frame.frame_id,
+    );
+    saveAndSelectTicket(ticketFromFrameSelection(payload, frame));
+    renderTicketDetail();
+  } catch (error) {
+    $("#ticket-captures-error").textContent = error.message || "票根背面选择失败";
+    $("#ticket-captures-error").hidden = false;
+  }
+}
+
+async function clearTicketBackImage() {
+  if (!state.selectedTicket) return;
+  $("#ticket-captures-error").hidden = true;
+  try {
+    let ticket = normalizeTicket({
+      ...state.selectedTicket,
+      local_back_image_url: "",
+      server_back_frame_id: "",
+      server_back_frame_url: "",
+    });
+    if (state.selectedTicket.server_back_frame_id && state.selectedTicket.viewing_id) {
+      const payload = await bridge.clearTicketFrame(state.selectedTicket.viewing_id);
+      const serverTicket = ticketFromViewingPayload(payload);
+      if (serverTicket) ticket = normalizeTicket(serverTicket, ticket);
+    }
+    saveAndSelectTicket(ticket);
+    renderTicketDetail();
+  } catch (error) {
+    $("#ticket-captures-error").textContent = error.message || "票根背面清除失败";
+    $("#ticket-captures-error").hidden = false;
+  }
+}
+
+function pickTicketImage(role) {
+  if (!state.selectedTicket) return;
+  state.ticketAssetRole = role;
+  const input = $("#ticket-image-input");
+  input.value = "";
+  input.click();
+}
+
+function fileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result || "")), { once: true });
+    reader.addEventListener("error", () => reject(new Error("图片读取失败")), { once: true });
+    reader.readAsDataURL(file);
+  });
+}
+
+function openTicketDetail(value) {
+  state.selectedTicket = normalizeTicket(value);
+  state.ticketFlipped = false;
+  state.ticketCaptures = [];
+  renderTicketDetail();
+  $("#ticket-detail-dialog").showModal();
+  loadTicketCaptures(state.selectedTicket.viewing_id);
+}
+
+function renderTicketFolder() {
+  const tickets = ticketStore.list();
+  $("#tickets-count").textContent = `${tickets.length} 张一起看的票根`;
+  $("#tickets-empty").hidden = tickets.length > 0;
+  const list = $("#tickets-list");
+  list.hidden = tickets.length === 0;
+  list.replaceChildren();
+  for (const ticket of tickets) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ticket-entry";
+    button.setAttribute("aria-label", `查看${ticket.title}的票根`);
+    button.append(renderTicketCard(ticket));
+    button.addEventListener("click", () => openTicketDetail(ticket));
+    list.append(button);
+  }
+}
+
+async function openTicketFolder() {
+  renderTicketFolder();
+  setPage("tickets", { historyMode: "push" });
+  try {
+    const payload = await bridge.listTickets();
+    for (const ticket of payload.tickets || []) {
+      ticketStore.save(normalizeTicket(ticket, ticketIdentityFallback()));
+    }
+    renderTicketFolder();
+  } catch {
+    // The local shelf remains usable while an offline or older host is unavailable.
+  }
+}
+
+function buildEndTicket(payload, sessionId) {
+  const viewing = payload?.viewing_summary || {};
+  const source = payload?.ticket || viewing.ticket || {};
+  if (!source.ticket_id && !source.id) return null;
+  const serverDuration = Number(
+    source.played_duration_ms ?? viewing.played_duration_ms,
+  );
+  const playedDurationMs = Number.isFinite(serverDuration) && serverDuration > 0
+    ? serverDuration
+    : state.viewingDuration.totalMs;
+  const endedAt = source.ended_at
+    || source.completed_at
+    || source.created_at
+    || new Date().toISOString();
+  return normalizeTicket(
+    {
+      ...source,
+      played_duration_ms: playedDurationMs,
+    },
+    {
+      viewing_id: viewing.viewing_id || state.viewingId,
+      work_key: viewing.work_key || state.session?.media?.work_key || "",
+      title: viewing.title || selectedTitle(),
+      cover_url: viewing.cover_url || state.session?.media?.cover_url || "",
+      ended_at: endedAt,
+      played_duration_ms: playedDurationMs,
+      part_count: state.parts.length || 1,
+      part_label: [...state.viewedPartLabels].join(" / "),
+      last_session_id: sessionId,
+      ...ticketIdentityFallback(),
+    },
+  );
 }
 
 function updateSelection() {
@@ -290,6 +684,18 @@ async function prepareLocalMedia() {
   if (!Number.isFinite(durationMs) || durationMs <= 0) throw new Error("没有读到本地视频时长");
   state.localAssetId = state.localAssetId || createLocalAssetId();
   state.localRevision = await computeMediaRevision(state.localFile, durationMs);
+  if (
+    state.resumeViewing?.media_revision
+    && state.localRevision !== state.resumeViewing.media_revision
+  ) {
+    throw new Error("选择的本地视频与保存进度中的文件版本不一致");
+  }
+  if (state.resumeViewing?.local_asset_id) {
+    state.localAssetId = state.resumeViewing.local_asset_id;
+  }
+  if (state.resumePlayheadMs > 0) {
+    video.currentTime = Math.min(video.duration, state.resumePlayheadMs / 1000);
+  }
   state.sampler?.destroy();
   state.sampler = new LocalFrameSampler(state.localUrl);
   let canExportFrames = true;
@@ -307,6 +713,10 @@ async function prepareLocalMedia() {
     id: `local:${state.localAssetId}`,
     source: "local_file",
     title: selectedTitle(),
+    work_key: `local:${state.localRevision}`,
+    part_key: `local:${state.localRevision}`,
+    part_index: 1,
+    part_count: 1,
     duration_ms: durationMs,
     ...(contentStartMs === null ? {} : { content_start_ms: contentStartMs }),
     ...(contentEndMs === null ? {} : { content_end_ms: contentEndMs }),
@@ -356,8 +766,12 @@ async function prepareBilibiliMedia() {
     source_url: current.canonical_url,
     embed_url: current.embed_url,
     title: selectedTitle() || description.title,
+    work_key: `bilibili:${reference.bvid}`,
+    cover_url: description.cover_url || "",
     part_title: current.title,
+    part_key: `${reference.bvid}:p${current.page}`,
     part_index: current.page,
+    part_count: Math.max(1, state.parts.length),
     duration_ms: current.duration_ms,
     ...(contentStartMs === null ? {} : { content_start_ms: contentStartMs }),
     ...(contentEndMs === null ? {} : { content_end_ms: contentEndMs }),
@@ -375,6 +789,48 @@ function modePayload() {
   };
 }
 
+function restoreModeControls(mode = {}) {
+  if (mode.knowledge_mode) {
+    state.knowledgeMode = mode.knowledge_mode;
+    for (const radio of $$('input[name="knowledge-mode"]')) {
+      radio.checked = radio.value === state.knowledgeMode;
+    }
+  }
+  if (typeof mode.fear_mode === "boolean") {
+    $("#fear-mode-input").checked = mode.fear_mode;
+    $("#fear-action-row").hidden = !mode.fear_mode;
+  }
+  if (mode.fear_action) {
+    state.fearAction = mode.fear_action;
+    for (const button of $$('[data-fear-action]')) {
+      button.classList.toggle("is-selected", button.dataset.fearAction === state.fearAction);
+    }
+  }
+  if (typeof mode.danmaku_enabled === "boolean") {
+    $("#danmaku-input").checked = mode.danmaku_enabled;
+  }
+  if (Number.isFinite(Number(mode.reply_lead_ms))) {
+    state.replyLeadMs = Number(mode.reply_lead_ms);
+    const matching = $$('[data-delay]').find(
+      (button) => Number(button.dataset.delay) === state.replyLeadMs,
+    );
+    setSelected($$('[data-delay]'), matching || $('[data-delay="custom"]'));
+    $("#custom-delay-field").hidden = Boolean(matching);
+    if (!matching) {
+      $("#custom-delay-input").value = String(Math.round(state.replyLeadMs / 1000));
+    }
+  }
+  if (mode.visual_context_mode) {
+    state.visualMode = mode.visual_context_mode;
+    for (const button of $$('[data-visual-mode]')) {
+      button.classList.toggle(
+        "is-selected",
+        button.dataset.visualMode === state.visualMode,
+      );
+    }
+  }
+}
+
 function activeFearMode(payload = {}) {
   const configured = payload.mode?.fear_mode ?? state.session?.mode?.fear_mode;
   return configured === undefined ? $("#fear-mode-input").checked : Boolean(configured);
@@ -387,6 +843,10 @@ function clearRuntimeTimers() {
 
 function resetSessionState() {
   clearRuntimeTimers();
+  if (state.capturePreview?.url) URL.revokeObjectURL(state.capturePreview.url);
+  state.capturePreview = null;
+  state.captureWasPlaying = false;
+  state.captureBusy = false;
   state.sampler?.destroy();
   state.sampler = null;
   if (state.localUrl) URL.revokeObjectURL(state.localUrl);
@@ -415,6 +875,8 @@ function resetSessionState() {
   state.conversationFollow = createConversationFollowState();
   state.ignoreConversationScroll = false;
   state.fallbackStreamMessageId = "";
+  state.viewingDuration = detachViewingDuration(state.viewingDuration);
+  $("#capture-frame-button").hidden = true;
   $$("#conversation-list .chat-message").forEach((message) => message.remove());
   $("#conversation-empty").hidden = false;
   $("#message-input").value = "";
@@ -436,6 +898,7 @@ async function uploadSelectedSubtitle(media) {
 function initialPlayerState(title) {
   $("#player-title").textContent = title || "一起看";
   $("#sync-badge").textContent = "准备中";
+  $("#capture-frame-button").hidden = true;
   $("#player-lock").hidden = false;
   $("#preparation-panel").hidden = false;
   $("#conversation-panel").hidden = true;
@@ -465,13 +928,27 @@ async function enterPlayer() {
       ? `${media.title} · ${media.part_title}`
       : media.title;
     const created = await bridge.createSession({
+      viewing_id: state.viewingId,
       window_id: config.windowId || "together-watch:web",
       companion: config.companion || { id: "companion", name: companionName },
       media,
       mode: modePayload(),
     });
     state.session = created.session;
+    state.viewingId = created.viewing_summary?.viewing_id
+      || created.session?.viewing_id
+      || state.viewingId;
+    const partLabel = media.part_title
+      || (media.part_count > 1 ? `P${media.part_index}` : "");
+    if (partLabel) state.viewedPartLabels.add(partLabel);
     state.timeline = new PlaybackTimeline(media.id);
+    if (state.resumePlayheadMs > 0 && state.source !== "local") {
+      await bridge.restorePlaybackPosition({
+        session_id: state.session.session_id,
+        media,
+        playhead_ms: state.resumePlayheadMs,
+      });
+    }
     if (state.source === "local") await uploadSelectedSubtitle(media);
     startRuntimeLoops();
     await pollStatus();
@@ -528,6 +1005,11 @@ async function syncPlayback() {
   try {
     const snapshot = await captureSnapshot();
     if (!snapshot) return null;
+    state.viewingDuration = observeViewingDuration(state.viewingDuration, {
+      sessionId: state.session.session_id,
+      snapshot,
+      observedAtMs: performance.now(),
+    });
     const result = await bridge.updatePlayback(state.session.session_id, snapshot);
     if (result.session) state.session = result.session;
     updatePlaybackClock(snapshot);
@@ -1017,6 +1499,7 @@ function unlockPlayback() {
   const chatReady = bridge.canSendMessage();
   $("#message-input").disabled = !chatReady;
   updateConversationState(false);
+  updateCaptureButton();
   if (!chatReady) setError("聊天宿主未配置；播放与分析仍会正常同步。", "message");
 }
 
@@ -1236,28 +1719,38 @@ function renderPreparationPartSelector() {
 }
 
 async function switchPart(part) {
-  const ended = await leaveSession({ returnToConfirm: false, showCost: false });
+  const ended = await leaveSession({ returnToConfirm: false });
   if (!ended) return;
+  state.resumePlayheadMs = 0;
+  state.resumeViewing = null;
   $("#bilibili-input").value = part.canonical_url;
   $("#part-list").hidden = true;
   await enterPlayer();
 }
 
-async function leaveSession({ returnToConfirm = true, consumeHistory = true, showCost = true } = {}) {
+async function leaveSession({
+  returnToConfirm = true,
+  consumeHistory = true,
+  viewingAction = "",
+  showSummary = false,
+} = {}) {
   if (state.ending) return false;
   state.ending = true;
   const sessionId = state.session?.session_id;
   clearRuntimeTimers();
+  if (sessionId) await syncPlayback().catch(() => null);
   $("#local-video").pause();
+  let endTicket = null;
   try {
     if (sessionId) {
-      const ended = await bridge.endSession(sessionId);
+      const ended = await bridge.endSession(sessionId, { viewingAction });
       recordEndedSessionCost(sessionId, ended);
+      if (viewingAction === "complete") endTicket = buildEndTicket(ended, sessionId);
     }
   } catch (error) {
     state.ending = false;
     if (state.session) startRuntimeLoops();
-    if (showCost) showAnalysisCostUnavailable();
+    if (showSummary) showAnalysisCostUnavailable();
     else toast(error.message || "结束会话失败；客户端租约会自动过期");
     return false;
   }
@@ -1271,22 +1764,100 @@ async function leaveSession({ returnToConfirm = true, consumeHistory = true, sho
       history.back();
     }
   }
-  if (showCost) finishAnalysisCostTracking();
+  if (showSummary) {
+    finishAnalysisCostTracking(endTicket, null, {
+      savedProgress: viewingAction === "save_progress",
+    });
+  }
   return true;
 }
 
-async function loadRecentSessions() {
+async function runViewingAction(action) {
+  if (state.endAction || !state.session) return;
+  setEndChoiceBusy(action);
+  $("#watch-end-choice-dialog").close();
+  const ended = await leaveSession({
+    viewingAction: action,
+    showSummary: true,
+  });
+  if (!ended) {
+    setEndChoiceBusy();
+    return;
+  }
+  setEndChoiceBusy();
+  await loadRecentViewings();
+}
+
+async function openRecentViewing(value) {
+  const recent = normalizeRecentViewing(value);
+  if (recent.completed) {
+    try {
+      const payload = recent.ticket
+        ? { ticket: recent.ticket }
+        : await bridge.getViewing(recent.viewing_id);
+      const ticket = ticketFromViewingPayload(payload) || recent.ticket;
+      if (!ticket) throw new Error("这条已看完记录还没有返回票根");
+      openTicketDetail(saveAndSelectTicket(ticket));
+    } catch (error) {
+      toast(error.message || "票根读取失败");
+    }
+    return;
+  }
+
+  state.viewingId = recent.viewing_id;
+  state.resumeViewing = recent;
+  state.resumePlayheadMs = recent.playhead_ms;
+  restoreModeControls(recent.mode);
+  if (!state.knowledgeMode) {
+    toast("请先选择作品了解模式，再从最近观看继续");
+    return;
+  }
+  $("#title-input").value = recent.title;
+  if (recent.source === "local_file" || recent.media_revision) {
+    selectSource("local");
+    toast("请重新选择原本地视频，校验通过后继续");
+    $("#local-file-input").click();
+    return;
+  }
+  if (!recent.source_url) {
+    toast("这条进度缺少可恢复的播放地址");
+    return;
+  }
+  if (!bridge.canRestorePlaybackPosition()) {
+    toast("宿主尚未实现跨域播放器进度恢复，当前不会假装从旧位置续播");
+    return;
+  }
+  selectSource("bilibili");
+  $("#bilibili-input").value = recent.source_url;
+  updateSelection();
+  await enterPlayer();
+}
+
+async function loadRecentViewings() {
   try {
-    const payload = await bridge.listSessions(config.windowId || "together-watch:web");
-    const sessions = payload.sessions || [];
-    $("#recent-section").hidden = sessions.length === 0;
+    const payload = await bridge.listViewings({
+      status: "recent",
+      windowId: config.windowId || "together-watch:web",
+    });
+    const viewings = (payload.viewings || payload.items || payload.recent || [])
+      .map(normalizeRecentViewing)
+      .filter((viewing) => viewing.viewing_id);
+    $("#recent-section").hidden = viewings.length === 0;
     const list = $("#recent-list");
     list.replaceChildren();
-    for (const session of sessions) {
+    for (const viewing of viewings) {
       const fragment = $("#recent-template").content.cloneNode(true);
-      fragment.querySelector(".recent-title").textContent = session.media?.title || "一起看";
-      fragment.querySelector(".recent-part").textContent = session.media?.part_title || "";
-      fragment.querySelector(".recent-time").textContent = formatMediaTime(session.playback?.playhead_ms || 0);
+      const button = fragment.querySelector(".recent-card");
+      fragment.querySelector(".recent-title").textContent = viewing.title;
+      fragment.querySelector(".recent-part").textContent = viewing.part_title || "Lean In";
+      fragment.querySelector(".recent-status").textContent = viewing.status_text;
+      const cover = fragment.querySelector(".recent-cover");
+      if (viewing.cover_url) {
+        cover.src = viewing.cover_url;
+        cover.alt = viewing.title;
+        cover.hidden = false;
+      }
+      button.addEventListener("click", () => openRecentViewing(viewing));
       list.append(fragment);
     }
   } catch {
@@ -1294,11 +1865,205 @@ async function loadRecentSessions() {
   }
 }
 
+function updateCaptureButton() {
+  const button = $("#capture-frame-button");
+  const available = state.source === "local" || bridge.canCaptureVideoFrame();
+  button.hidden = !state.unlocked || !available;
+  button.disabled = state.captureBusy || !state.session;
+  button.textContent = state.captureBusy
+    ? "截取中"
+    : state.ticketCaptures.length
+      ? `截帧·${state.ticketCaptures.length}`
+      : "截帧";
+}
+
+function canvasBlob(canvas) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("当前画面无法生成图片"))),
+      "image/jpeg",
+      0.92,
+    );
+  });
+}
+
+async function normalizeCapturedJpeg(blob, suppliedWidth = 0, suppliedHeight = 0) {
+  const width = Number(suppliedWidth) || 0;
+  const height = Number(suppliedHeight) || 0;
+  if (blob.type === "image/jpeg" && width > 0 && height > 0) {
+    return { blob, width, height, mimeType: "image/jpeg" };
+  }
+  if (typeof createImageBitmap !== "function") {
+    throw new Error("宿主截图需要提供 JPEG 及真实宽高");
+  }
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    canvas.getContext("2d", { alpha: false }).drawImage(bitmap, 0, 0);
+    return {
+      blob: await canvasBlob(canvas),
+      width: bitmap.width,
+      height: bitmap.height,
+      mimeType: "image/jpeg",
+    };
+  } finally {
+    bitmap.close();
+  }
+}
+
+async function captureLocalVideoFrame() {
+  const video = $("#local-video");
+  if (video.readyState < 2 || !video.videoWidth || !video.videoHeight) {
+    throw new Error("本地播放器画面还没有准备好");
+  }
+  const wasPlaying = !video.paused;
+  video.pause();
+  const canvas = document.createElement("canvas");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext("2d", { alpha: false }).drawImage(video, 0, 0);
+  const blob = await canvasBlob(canvas);
+  return {
+    blob,
+    atMs: Math.round(video.currentTime * 1000),
+    capturedAt: new Date().toISOString(),
+    wasPlaying,
+    width: video.videoWidth,
+    height: video.videoHeight,
+    mimeType: "image/jpeg",
+  };
+}
+
+async function blobFromHostCapture(value) {
+  if (value instanceof Blob) return value;
+  if (value?.blob instanceof Blob) return value.blob;
+  const dataUrl = value?.data_url || value?.image_data_url;
+  if (dataUrl) return (await fetch(dataUrl)).blob();
+  throw new Error("宿主没有返回可预览的视频画面");
+}
+
+async function captureCurrentVideoFrame() {
+  if (!state.session || !state.unlocked || state.captureBusy) return;
+  state.captureBusy = true;
+  updateCaptureButton();
+  try {
+    let captured;
+    if (state.source === "local") {
+      captured = await captureLocalVideoFrame();
+    } else {
+      const snapshot = await captureSnapshot();
+      const raw = await bridge.captureVideoFrame({
+        session_id: state.session.session_id,
+        media: state.session.media,
+        playback: snapshot,
+      });
+      const normalized = await normalizeCapturedJpeg(
+        await blobFromHostCapture(raw),
+        raw?.width,
+        raw?.height,
+      );
+      captured = {
+        ...normalized,
+        atMs: Number(raw?.at_ms ?? snapshot?.playhead_ms ?? 0),
+        capturedAt: raw?.captured_at || new Date().toISOString(),
+        wasPlaying: Boolean(raw?.was_playing ?? snapshot?.is_playing),
+      };
+    }
+    if (state.capturePreview?.url) URL.revokeObjectURL(state.capturePreview.url);
+    state.capturePreview = {
+      ...captured,
+      wasPlaying: state.captureWasPlaying || captured.wasPlaying,
+      url: URL.createObjectURL(captured.blob),
+    };
+    state.captureWasPlaying = state.capturePreview.wasPlaying;
+    $("#capture-preview-image").src = state.capturePreview.url;
+    $("#capture-preview-description").textContent = `截取于 ${formatMediaTime(captured.atMs)} · 确认后会保存到这次观看的自选画面`;
+    $("#capture-preview-error").hidden = true;
+    $("#save-frame-button").textContent = "保存这张";
+    $("#capture-preview-dialog").showModal();
+  } catch (error) {
+    toast(error.message || "当前画面截取失败");
+    await resumeAfterCapture();
+  } finally {
+    state.captureBusy = false;
+    updateCaptureButton();
+  }
+}
+
+async function resumeAfterCapture() {
+  const preview = state.capturePreview;
+  if (!(preview?.wasPlaying || state.captureWasPlaying) || !state.unlocked) return;
+  if (state.source === "local") {
+    await $("#local-video").play().catch(() => {});
+  } else if (state.session) {
+    await bridge.resumePlaybackAfterCapture({
+      session_id: state.session.session_id,
+      media: state.session.media,
+    }).catch(() => {});
+  }
+}
+
+async function closeCapturePreview({ resume = true } = {}) {
+  const preview = state.capturePreview;
+  if (resume) await resumeAfterCapture();
+  if (preview?.url) URL.revokeObjectURL(preview.url);
+  state.capturePreview = null;
+  if (resume) state.captureWasPlaying = false;
+  $("#capture-preview-image").removeAttribute("src");
+  const dialog = $("#capture-preview-dialog");
+  if (dialog.open) dialog.close();
+}
+
+async function saveCapturePreview() {
+  const preview = state.capturePreview;
+  if (!preview || !state.viewingId || state.captureBusy) return;
+  state.captureBusy = true;
+  $("#save-frame-button").disabled = true;
+  $("#retake-frame-button").disabled = true;
+  $("#save-frame-button").textContent = "保存中…";
+  $("#capture-preview-error").hidden = true;
+  try {
+    const snapshot = await captureSnapshot().catch(() => null);
+    const payload = await bridge.uploadTicketFrameCapture(
+      state.viewingId,
+      {
+        session_id: state.session?.session_id || "",
+        media_id: state.session?.media?.id || "",
+        at_ms: preview.atMs,
+        timeline_epoch: Number(snapshot?.timeline_epoch || 0),
+        width: preview.width,
+        height: preview.height,
+        mime_type: preview.mimeType || "image/jpeg",
+      },
+      preview.blob,
+    );
+    const frame = normalizeTicketCapture(payload.capture || payload.frame);
+    if (!frame.frame_id || !frame.image_url) throw new Error("网关没有返回已保存的画面");
+    state.ticketCaptures = [
+      ...state.ticketCaptures.filter((item) => item.frame_id !== frame.frame_id),
+      frame,
+    ];
+    await closeCapturePreview();
+    toast("这张画面已经保存，之后可以在票根里选择");
+  } catch (error) {
+    $("#capture-preview-error").textContent = error.message || "画面保存失败";
+    $("#capture-preview-error").hidden = false;
+  } finally {
+    state.captureBusy = false;
+    $("#save-frame-button").disabled = false;
+    $("#retake-frame-button").disabled = false;
+    $("#save-frame-button").textContent = "保存这张";
+    updateCaptureButton();
+  }
+}
+
 for (const button of $$('[data-source]')) {
   button.addEventListener("click", () => selectSource(button.dataset.source));
 }
 
-$("#local-file-input").addEventListener("change", (event) => {
+$("#local-file-input").addEventListener("change", async (event) => {
   state.localFile = event.target.files?.[0] || null;
   state.localAssetId = state.localFile ? createLocalAssetId() : "";
   state.localRevision = "";
@@ -1310,6 +2075,7 @@ $("#local-file-input").addEventListener("change", (event) => {
     $("#title-input").value = titleFromFileName(state.localFile.name);
   }
   updateSelection();
+  if (state.localFile && state.resumeViewing) await enterPlayer();
 });
 
 $("#local-subtitle-input").addEventListener("change", (event) => {
@@ -1376,16 +2142,34 @@ $("#custom-delay-input").addEventListener("input", (event) => {
 $("#setup-form").addEventListener("submit", (event) => {
   event.preventDefault();
   resetAnalysisCostTracking();
+  state.viewingId = "";
+  state.viewingDuration = createViewingDurationAccumulator();
+  state.viewedPartLabels.clear();
+  state.resumeViewing = null;
+  state.resumePlayheadMs = 0;
+  state.ticketCaptures = [];
   enterPlayer();
 });
 
 $("#confirm-back").addEventListener("click", () => {
   window.dispatchEvent(new CustomEvent("togetherwatch:back"));
 });
+$("#ticket-folder-button").addEventListener("click", openTicketFolder);
+$("#tickets-back").addEventListener("click", () => {
+  if (history.state?.[WATCH_PAGE_STATE_KEY] === "tickets") history.back();
+  else setPage("confirm");
+});
 $("#open-chat-button").addEventListener("click", () => bridge.openChat({ source: state.source }));
-$("#player-back").addEventListener("click", () => leaveSession());
-$("#return-confirm-button").addEventListener("click", () => leaveSession());
-$("#end-session-button").addEventListener("click", () => leaveSession());
+$("#player-back").addEventListener("click", showEndChoiceDialog);
+$("#return-confirm-button").addEventListener("click", showEndChoiceDialog);
+$("#end-session-button").addEventListener("click", showEndChoiceDialog);
+$("#watch-end-choice-close").addEventListener("click", closeEndChoiceDialog);
+$("#save-progress-button").addEventListener("click", () => runViewingAction("save_progress"));
+$("#complete-viewing-button").addEventListener("click", () => runViewingAction("complete"));
+$("#watch-end-choice-dialog").addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeEndChoiceDialog();
+});
 $("#confirm-start-button").addEventListener("click", () => startWithAction("confirm"));
 $("#wait-protection-button").addEventListener("click", async () => {
   if (!state.session || state.polling) return;
@@ -1430,6 +2214,16 @@ $("#retry-local-sampling-button").addEventListener("click", async () => {
 $("#fullscreen-button").addEventListener("click", async () => {
   if (document.fullscreenElement) await document.exitFullscreen();
   else await $("#video-stage").requestFullscreen();
+});
+$("#capture-frame-button").addEventListener("click", captureCurrentVideoFrame);
+$("#save-frame-button").addEventListener("click", saveCapturePreview);
+$("#retake-frame-button").addEventListener("click", async () => {
+  await closeCapturePreview({ resume: false });
+  await captureCurrentVideoFrame();
+});
+$("#capture-preview-dialog").addEventListener("cancel", async (event) => {
+  event.preventDefault();
+  if (!state.captureBusy) await closeCapturePreview();
 });
 
 $("#message-input").addEventListener("input", (event) => {
@@ -1501,10 +2295,61 @@ $("#next-part-button").addEventListener("click", () => {
   const index = state.parts.findIndex((item) => item.media_id === state.currentPart?.media_id);
   if (index >= 0 && index < state.parts.length - 1) switchPart(state.parts[index + 1]);
 });
-$("#analysis-cost-confirm").addEventListener("click", closeAnalysisCostDialog);
-$("#analysis-cost-dialog").addEventListener("cancel", (event) => {
+$("#watch-end-dismiss").addEventListener("click", closeWatchEndDialog);
+$("#watch-end-save").addEventListener("click", () => {
+  if (!state.currentEndTicket) {
+    closeWatchEndDialog();
+    return;
+  }
+  if (state.endTicketSaved) {
+    closeWatchEndDialog();
+    return;
+  }
+  ticketStore.save(state.currentEndTicket);
+  state.endTicketSaved = true;
+  $("#watch-end-dismiss").hidden = true;
+  $("#watch-end-save").textContent = "完成";
+  renderTicketFolder();
+  toast("已经放进票夹了");
+});
+$("#watch-end-dialog").addEventListener("cancel", (event) => {
   event.preventDefault();
-  closeAnalysisCostDialog();
+  closeWatchEndDialog();
+});
+$("#ticket-detail-close").addEventListener("click", () => {
+  $("#ticket-detail-dialog").close();
+  state.selectedTicket = null;
+});
+function flipTicketDetail() {
+  state.ticketFlipped = !state.ticketFlipped;
+  renderTicketDetail();
+}
+$("#ticket-detail-card").addEventListener("click", flipTicketDetail);
+$("#ticket-flip-button").addEventListener("click", flipTicketDetail);
+$("#edit-companion-avatar").addEventListener("click", () => pickTicketImage("companion"));
+$("#edit-viewer-avatar").addEventListener("click", () => pickTicketImage("viewer"));
+$("#pick-ticket-back-image").addEventListener("click", () => pickTicketImage("back"));
+$("#clear-ticket-back-image").addEventListener("click", clearTicketBackImage);
+$("#ticket-image-input").addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file || !state.selectedTicket || !state.ticketAssetRole) return;
+  try {
+    const imageUrl = await fileAsDataUrl(file);
+    const updated = state.ticketAssetRole === "back"
+      ? normalizeTicket({ ...state.selectedTicket, local_back_image_url: imageUrl })
+      : updateTicketAvatar(state.selectedTicket, state.ticketAssetRole, imageUrl);
+    saveAndSelectTicket(updated);
+    renderTicketDetail();
+  } catch (error) {
+    toast(error.message || "票根图片保存失败");
+  } finally {
+    state.ticketAssetRole = "";
+  }
+});
+$("#ticket-detail-dialog").addEventListener("cancel", (event) => {
+  event.preventDefault();
+  $("#ticket-detail-dialog").close();
+  state.selectedTicket = null;
 });
 
 window.addEventListener("togetherwatch:danmaku", (event) => acceptDanmaku(event.detail));
@@ -1532,14 +2377,19 @@ window.addEventListener("popstate", () => {
   }
   if (state.page === "player") {
     leaveSession({ consumeHistory: false });
+  } else if (state.page === "tickets") {
+    setPage("confirm");
   }
 });
 window.addEventListener("pagehide", () => {
-  if (state.session?.session_id) bridge.endSession(state.session.session_id).catch(() => {});
+  if (state.session?.session_id) {
+    bridge.endSession(state.session.session_id).catch(() => {});
+  }
 });
 
 setPage("confirm", { historyMode: "replace" });
 selectSource("bilibili");
 updateSelection();
 updateConversationState(false);
-loadRecentSessions();
+renderTicketFolder();
+loadRecentViewings();

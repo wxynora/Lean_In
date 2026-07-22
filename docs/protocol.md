@@ -28,8 +28,12 @@ Network/embedded example:
   "source_url": "https://www.bilibili.com/video/BV...?p=1",
   "embed_url": "https://player.bilibili.com/player.html?...",
   "title": "Example Work",
+  "work_key": "movie:example-work",
+  "cover_url": "https://example.invalid/cover.jpg",
   "part_title": "Episode 1",
+  "part_key": "episode-1",
   "part_index": 1,
+  "part_count": 1,
   "duration_ms": 1452000,
   "content_start_ms": 60000,
   "content_end_ms": 1390000
@@ -117,6 +121,7 @@ For local media:
 ```json
 {
   "idempotency_key": "create-attempt-opaque-id",
+  "viewing_id": "",
   "window_id": "my-product:watch",
   "companion": { "id": "companion", "name": "{assistant}" },
   "media": { "...": "see Media Descriptor" },
@@ -140,6 +145,12 @@ one transaction so a timeout/retry cannot create two preparation pipelines. A ty
     "mode": { "knowledge_mode": "needs_summary" },
     "state": "preparing",
     "create_reused": false
+  },
+  "viewing_summary": {
+    "viewing_id": "watch_viewing_...",
+    "work_key": "movie:example-work",
+    "completed": false,
+    "ticket": null
   }
 }
 ```
@@ -150,8 +161,23 @@ Session creation does not unlock playback.
 
 `GET /sessions?window_id=<id>&limit=20`
 
-Use this for recent/resumable presentation. Hosts should not return ended or lease-expired sessions
-as actively synchronized. A client must still fetch status before resuming.
+Use this only for active session recovery. Hosts must not return ended or lease-expired sessions as
+actively synchronized.
+
+## List Saved Progress
+
+`GET /viewings?window_id=<id>&status=resumable`
+
+This returns saved `viewing_progress` records for Recent Watch. It is separate from active-session
+recovery and from the completed ticket shelf. A saved record keeps its `viewing_id`, selected part,
+authoritative playhead, trusted played duration, analysis coverage, and any explicitly selected
+ticket-back frame.
+
+To resume, create a new session with the saved `viewing_id` and the same `work_key` and part identity.
+The host reattaches the retained plot chunks, risks, knowledge card, and subtitle reference to that
+new session. Raw audio, raw frames, and contact sheets are not retained for resume. A local-file
+client must reselect the file and prove the same `media_revision`; the host must reject a replacement
+file rather than reuse the old analysis.
 
 ## Client Lease
 
@@ -371,6 +397,14 @@ or a subtitle track different from the session selection.
 External subtitle search remains optional. No result is represented as `not_found`; missing provider
 configuration is `not_configured`. Neither state should block ordinary playback.
 
+TMDB is an optional identity resolver for a user-triggered retry, not a required subtitle source.
+The ordinary lookup first tries the identified original and localized titles against the configured
+subtitle provider. Only after that lookup reaches `not_found` or `failed` and the viewer explicitly
+retries may a host with `tmdb_identity.enabled=true` resolve a unique movie/TV ID and retry the
+subtitle provider by ID. The read-access token stays in the server environment named by
+`read_access_token_env`; it is never returned to the client. Missing TMDB configuration remains
+`not_configured` and does not disable title lookup, local subtitles, or playback.
+
 ## Preparation Actions
 
 ### Regenerate Knowledge Card
@@ -480,7 +514,14 @@ The successful response includes the analysis-model cost reported for this sessi
         "output_tokens": 3100
       }
     }
-  }
+  },
+  "viewing_summary": {
+    "viewing_id": "watch_viewing_...",
+    "completed": true,
+    "played_duration_ms": 6543000,
+    "ticket": { "$ref": "viewingTicket example below" }
+  },
+  "ticket": { "$ref": "viewingTicket example below" }
 }
 ```
 
@@ -497,6 +538,151 @@ not double count it.
 
 If the client cannot send DELETE, lease expiry performs the same abandonment cleanup. Worker startup
 must not revive a session whose lease is blank or expired.
+
+Technical cleanup, saving progress, and completing a viewing are three different transitions:
+
+| Request | Meaning |
+| --- | --- |
+| `DELETE /sessions/{id}` | Technical cleanup for part switching, `pagehide`, or abandonment. It creates neither saved progress nor a ticket. |
+| `DELETE /sessions/{id}?viewing_action=save_progress` | Close the session, retain resumable plot analysis and the authoritative playback point, and create no ticket. |
+| `DELETE /sessions/{id}?viewing_action=complete` | Clear resumable progress and create or return one stable ticket. |
+
+`save_progress` returns `viewing_summary.progress` and may also expose it as top-level
+`viewing_progress`. `complete` returns `viewing_summary.ticket` and may also expose it as top-level
+`ticket`. Repeating `complete` must return the same ticket and must not restart any retention clock.
+The old `finalize_viewing=true` query may be accepted by a host as a temporary compatibility alias
+for `viewing_action=complete`, but new clients should use the explicit action.
+
+## Viewing Completion and Ticket Shelf
+
+The first part may omit `viewing_id`; the host creates one and returns it in `viewing_summary`.
+Subsequent parts use separate sessions but reuse that `viewing_id`, the same `work_key`, and truthful
+`part_key`, `part_index`, and `part_count` values.
+
+The host records trusted played time only between adjacent snapshots when the previous snapshot was
+playing in the same timeline epoch. The increment is the smaller of server-observed elapsed time and
+media movement divided by the previous playback rate. Pause, preparation, and seek jumps therefore
+do not inflate the ticket duration.
+
+`content_end_ms` is the viewer-supplied normal-content end, commonly the beginning of credits or the
+ending song. When it is absent, the media duration is the completion boundary. Reaching the boundary
+after playback unlock plus either same-epoch trusted playback or explicit `media_ended=true` marks
+that part complete. It is not a ticket gate and it does not need to include filler appended after the
+real program.
+
+The host persists one stable ticket when an explicit `viewing_action=complete` DELETE is received. The
+ticket records the actual trusted playback accumulated before that action. `viewing_summary.completed`
+separately reports whether every required part reached its normal-content boundary:
+
+```json
+{
+  "ticket_id": "watch_ticket_...",
+  "viewing_id": "watch_viewing_...",
+  "work_key": "movie:example-work",
+  "title": "Example Work",
+  "cover_url": "https://example.invalid/cover.jpg",
+  "companion": { "id": "companion", "name": "{assistant}" },
+  "created_at": "2026-01-01T02:03:04Z",
+  "completed_at": "2026-01-01T02:03:04Z",
+  "played_duration_ms": 6543000,
+  "part_count": 1,
+  "completed_parts": [
+    {
+      "part_key": "episode-1",
+      "media_id": "bilibili:BV...:p1",
+      "part_index": 1,
+      "part_title": "Episode 1",
+      "played_duration_ms": 6543000,
+      "completed_at": "2026-01-01T02:03:04Z",
+      "completion_event_id": "watch_completion_...",
+      "last_session_id": "watch_..."
+    }
+  ],
+  "last_session_id": "watch_...",
+  "back_frame": null
+}
+```
+
+Recommended host routes:
+
+- `GET /viewings?status=resumable&window_id=...` returns saved progress ordered newest first;
+- `GET /viewings/{viewing_id}` returns `viewing_summary` for recovery;
+- `POST/GET /viewings/{viewing_id}/ticket-frame-captures` saves or lists user-confirmed JPEG
+  captures from every part of the viewing;
+- `GET /viewings/{viewing_id}/ticket-frame-captures/{capture_id}/image` reads one authenticated
+  persistent capture;
+- `PUT /viewings/{viewing_id}/ticket-frame` selects one candidate frame already produced for that
+  viewing; `DELETE` on the same route clears it;
+- `GET /tickets` returns finalized viewing tickets ordered newest first;
+- `PUT /tickets/{ticket_id}` with `{ "title": "Edited title" }` saves a ticket title;
+- successful playback/status/DELETE responses include additive `viewing_summary` fields;
+- plain `DELETE /sessions/{id}` is for part switching, pagehide, and abandoned-session cleanup;
+- `viewing_action=save_progress` retains resumable state without creating a ticket;
+- `viewing_action=complete` creates the stable ticket even when
+  `viewing_summary.completed=false`.
+
+Saved progress and completed-viewing retention are intentionally different. Saved progress retains
+the committed plot analysis needed to resume; it is not converted into a completed-analysis TTL.
+When `viewing_action=complete` is accepted, resumable progress is removed and committed plot analysis
+enters the host's completed-analysis TTL. The reference default is 24 hours
+(`86400` seconds), configurable through `ViewingLedger(completed_analysis_ttl_seconds=...)` or an
+equivalent host setting. The response exposes `completed_analysis_cache_expires_at`. The ticket,
+the current back-frame selection, and user-confirmed capture collection survive that expiry, while
+plot chunks, risks, subtitle working data, and other analysis cache may be deleted. Raw audio, raw
+analysis frames, and contact sheets are still removed during every session end and are never
+extended by either action.
+
+When visual analysis has produced reusable frames, status may include:
+
+```json
+{
+  "ticket_frame_candidates": [
+    {
+      "frame_id": "frame_...",
+      "media_id": "bilibili:BV...:p1",
+      "at_ms": 125000,
+      "image_url": "https://host.example/private/watch-frames/frame_...",
+      "selected_at": ""
+    }
+  ]
+}
+```
+
+Candidate URLs may be short-lived. Selecting one tells the host to retain exactly that automatic
+analysis frame as the ticket back; all unselected analysis frames still follow normal cleanup.
+
+User-confirmed screenshots use a separate viewing-level upload and never enter analysis sample
+endpoints. `POST /viewings/{viewing_id}/ticket-frame-captures` is
+`multipart/form-data` with an `image` JPEG file and JSON `metadata`:
+
+```json
+{
+  "session_id": "watch_...",
+  "media_id": "bilibili:BV...:p1",
+  "timeline_epoch": 2,
+  "at_ms": 45000,
+  "width": 1280,
+  "height": 720,
+  "mime_type": "image/jpeg"
+}
+```
+
+The host authenticates the viewing owner, verifies that the session belongs to that viewing, and
+matches media and current timeline epoch. It decodes the file to verify real JPEG content and exact
+pixel dimensions before persistence. The response is `{ "ok": true, "capture": ... }`; list
+responses are `{ "ok": true, "captures": [...] }`, with stable save ordering. Every capture has
+`frame_id`, `media_id`, `at_ms`, `width`, `height`, `mime_type`, and an authenticated `image_url`.
+
+Store captures as independent rows keyed by `viewing_id`, with session/media/epoch provenance,
+file path or object key, SHA-256, and creation time. Do not foreign-key their lifetime to a session.
+Part switching, technical cleanup, save progress, completion, and completed-analysis TTL cleanup do
+not delete them. `PUT /viewings/{viewing_id}/ticket-frame` accepts `{ "capture_id": "capture_..." }`
+without requiring an active session, verifies ownership within the viewing, and updates both the
+current back-frame selection and any existing ticket. `DELETE` clears only that selection; it does
+not delete the capture collection. Capture image responses use the stored MIME type and cacheable
+HTTP headers while retaining normal viewing authorization.
+
+The protocol has no personal-watchlist or private-product archive integration.
 
 ## Context Envelope
 

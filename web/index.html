@@ -13,7 +13,7 @@
         <header class="top-bar">
           <button id="confirm-back" class="icon-button" type="button" aria-label="返回" title="返回">←</button>
           <h1 id="confirm-title">播放确认</h1>
-          <span class="top-bar-spacer" aria-hidden="true"></span>
+          <button id="ticket-folder-button" class="top-bar-link" type="button">票夹</button>
         </header>
 
         <main class="confirm-scroll">
@@ -184,6 +184,25 @@
         </main>
       </section>
 
+      <section id="tickets-page" class="page" hidden aria-labelledby="tickets-title">
+        <header class="top-bar ticket-folder-top-bar">
+          <button id="tickets-back" class="icon-button" type="button" aria-label="返回播放确认" title="返回播放确认">←</button>
+          <div class="ticket-folder-heading">
+            <h1 id="tickets-title">票夹</h1>
+            <p id="tickets-count">0 张一起看的票根</p>
+          </div>
+          <span class="top-bar-spacer" aria-hidden="true"></span>
+        </header>
+        <main class="ticket-folder-scroll">
+          <div id="tickets-empty" class="ticket-empty-state">
+            <span class="ticket-empty-mark" aria-hidden="true">票</span>
+            <h2>还没有票根</h2>
+            <p>结束一次一起看后，可以把那段时间收进这里。</p>
+          </div>
+          <div id="tickets-list" class="ticket-list" hidden></div>
+        </main>
+      </section>
+
       <section id="player-page" class="page" hidden aria-labelledby="player-title">
         <header class="top-bar player-top-bar">
           <button id="player-back" class="icon-button" type="button" aria-label="返回播放确认" title="返回播放确认">←</button>
@@ -210,6 +229,9 @@
                 <p>等待视频来源</p>
               </div>
               <div id="danmaku-layer" class="danmaku-layer" aria-live="polite"></div>
+              <button id="capture-frame-button" class="capture-frame-button" type="button" aria-label="截取当前视频画面" hidden>
+                截帧
+              </button>
               <button id="fullscreen-button" class="stage-icon-button" type="button" aria-label="切换全屏" title="切换全屏">⛶</button>
               <div id="player-lock" class="player-lock">
                 <span class="lock-mark" aria-hidden="true">▶</span>
@@ -335,14 +357,83 @@
       </section>
 
       <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-      <dialog id="analysis-cost-dialog" class="analysis-cost-dialog" aria-labelledby="analysis-cost-title">
-        <div class="analysis-cost-surface">
+      <input id="ticket-image-input" class="visually-hidden" type="file" accept="image/*">
+      <dialog id="watch-end-choice-dialog" class="watch-end-choice-dialog" aria-labelledby="watch-end-choice-title">
+        <div class="watch-end-choice-surface">
+          <button id="watch-end-choice-close" class="dialog-close-button" type="button" aria-label="关闭">×</button>
+          <h2 id="watch-end-choice-title">要怎么收好这次一起看？</h2>
+          <p>保存进度后可以从最近观看继续；已看完会结算费用并生成票根。</p>
+          <div class="watch-end-choice-actions">
+            <button id="save-progress-button" class="secondary-button" type="button">保存进度</button>
+            <button id="complete-viewing-button" class="primary-button" type="button">已看完</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="capture-preview-dialog" class="capture-preview-dialog" aria-labelledby="capture-preview-title">
+        <div class="capture-preview-surface">
+          <h2 id="capture-preview-title">保存这张画面？</h2>
+          <img id="capture-preview-image" alt="刚截取的纯视频画面">
+          <p id="capture-preview-description"></p>
+          <p id="capture-preview-error" class="capture-preview-error" role="alert" hidden></p>
+          <div class="capture-preview-actions">
+            <button id="retake-frame-button" class="secondary-button" type="button">重新截取</button>
+            <button id="save-frame-button" class="primary-button" type="button">保存这张</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="watch-end-dialog" class="watch-end-dialog" aria-labelledby="watch-end-title">
+        <div class="watch-end-surface">
           <p class="section-label accent-label">一起看已结束</p>
-          <h2 id="analysis-cost-title">本次剧情解析费用</h2>
-          <strong id="analysis-cost-amount" class="analysis-cost-amount"></strong>
-          <p id="analysis-cost-status" class="analysis-cost-status"></p>
-          <p id="analysis-cost-detail" class="analysis-cost-detail"></p>
-          <button id="analysis-cost-confirm" class="primary-button" type="button">知道了</button>
+          <h2 id="watch-end-title">这场一起看，收好啦</h2>
+          <div id="watch-end-ticket" class="watch-end-ticket"></div>
+          <section class="analysis-cost-summary" aria-labelledby="analysis-cost-title">
+            <div class="analysis-cost-heading">
+              <h3 id="analysis-cost-title">本次剧情解析费用</h3>
+              <strong id="analysis-cost-amount" class="analysis-cost-amount"></strong>
+            </div>
+            <p id="analysis-cost-status" class="analysis-cost-status"></p>
+            <p id="analysis-cost-detail" class="analysis-cost-detail"></p>
+          </section>
+          <div class="watch-end-actions">
+            <button id="watch-end-dismiss" class="secondary-button" type="button">暂不保存</button>
+            <button id="watch-end-save" class="primary-button" type="button">保存到票夹</button>
+          </div>
+        </div>
+      </dialog>
+
+      <dialog id="ticket-detail-dialog" class="ticket-detail-dialog" aria-labelledby="ticket-detail-title">
+        <div class="ticket-detail-surface">
+          <h2 id="ticket-detail-title">一起看的票根</h2>
+          <button id="ticket-detail-card" class="ticket-detail-card" type="button" aria-label="翻转票根"></button>
+          <p id="ticket-flip-hint" class="ticket-flip-hint">点票面可查看背面</p>
+          <section id="ticket-front-actions" class="ticket-edit-section">
+            <p>票面头像</p>
+            <div>
+              <button id="edit-companion-avatar" class="text-button" type="button">换<span data-companion></span>头像</button>
+              <button id="edit-viewer-avatar" class="text-button" type="button">换我的头像</button>
+            </div>
+          </section>
+          <section id="ticket-back-actions" class="ticket-edit-section" hidden>
+            <div class="ticket-capture-heading">
+              <div>
+                <p>自选画面</p>
+                <small>从观看时截下的画面里选一张</small>
+              </div>
+              <span id="ticket-captures-state"></span>
+            </div>
+            <div id="ticket-captures-list" class="ticket-captures-list"></div>
+            <p id="ticket-captures-error" class="capture-preview-error" role="alert" hidden></p>
+            <div>
+              <button id="pick-ticket-back-image" class="text-button" type="button">选择本地背图</button>
+              <button id="clear-ticket-back-image" class="text-button" type="button" hidden>清除背图</button>
+            </div>
+          </section>
+          <div class="ticket-detail-actions">
+            <button id="ticket-flip-button" class="secondary-button" type="button">查看背面</button>
+            <button id="ticket-detail-close" class="primary-button" type="button">关闭</button>
+          </div>
         </div>
       </dialog>
     </div>
@@ -357,11 +448,62 @@
     <template id="recent-template">
       <button class="recent-card" type="button">
         <span class="recent-poster">
+          <img class="recent-cover" alt="" hidden>
           <small class="recent-part"></small>
-          <time class="recent-time"></time>
+          <span class="recent-status"></span>
         </span>
         <strong class="recent-title"></strong>
       </button>
+    </template>
+    <template id="ticket-card-template">
+      <article class="ticket-card">
+        <div class="ticket-body">
+          <div class="ticket-kicker-row">
+            <span>LEAN IN</span>
+            <time class="ticket-date"></time>
+          </div>
+          <div class="ticket-people" aria-label="一起看的两个人">
+            <span class="ticket-avatar ticket-companion-avatar">
+              <img alt="" hidden>
+              <b class="ticket-companion-fallback"></b>
+            </span>
+            <em class="ticket-with">with</em>
+            <span class="ticket-avatar ticket-viewer-avatar">
+              <img alt="" hidden>
+              <b class="ticket-viewer-fallback">我</b>
+            </span>
+          </div>
+          <strong class="ticket-duration"></strong>
+          <div class="ticket-work-meta">
+            <span class="ticket-work-title"></span>
+          </div>
+          <span class="ticket-script" aria-hidden="true">
+            <span>One Screen,</span>
+            <span>Two Hearts.</span>
+          </span>
+        </div>
+        <div class="ticket-stub">
+          <strong>票夹</strong>
+          <div>
+            <span>LEAN IN</span>
+            <small>5排20 · 5排21</small>
+          </div>
+          <time class="ticket-time"></time>
+        </div>
+        <span class="ticket-divider" aria-hidden="true"></span>
+        <span class="ticket-notch ticket-notch-top" aria-hidden="true"></span>
+        <span class="ticket-notch ticket-notch-bottom" aria-hidden="true"></span>
+      </article>
+    </template>
+    <template id="ticket-back-template">
+      <article class="ticket-back-card">
+        <img class="ticket-back-image" alt="票根背面画面" hidden>
+        <div class="ticket-back-empty">
+          <span>ONE SCREEN, TWO HEARTS</span>
+          <strong>还没有选票根背面的画面</strong>
+        </div>
+        <span class="ticket-back-title"></span>
+      </article>
     </template>
 
     <script src="./config.js"></script>

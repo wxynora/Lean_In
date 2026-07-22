@@ -106,7 +106,57 @@ export class WatchApiClient {
     return this.request("POST", `sessions/${encodeURIComponent(sessionId)}/analysis/samples`, { form });
   }
 
-  endSession(sessionId) {
-    return this.request("DELETE", `sessions/${encodeURIComponent(sessionId)}`);
+  endSession(sessionId, { viewingAction = "" } = {}) {
+    return this.request("DELETE", `sessions/${encodeURIComponent(sessionId)}`, {
+      query: { viewing_action: viewingAction || undefined },
+    });
+  }
+
+  listViewings({ status = "recent", windowId = "" } = {}) {
+    return this.request("GET", "viewings", {
+      query: { status, window_id: windowId || undefined },
+    });
+  }
+
+  getViewing(viewingId) {
+    return this.request("GET", `viewings/${encodeURIComponent(viewingId)}`);
+  }
+
+  listTicketFrameCaptures(viewingId) {
+    return this.request(
+      "GET",
+      `viewings/${encodeURIComponent(viewingId)}/ticket-frame-captures`,
+    );
+  }
+
+  uploadTicketFrameCapture(viewingId, metadata, image) {
+    const form = new FormData();
+    form.set("metadata", JSON.stringify(metadata));
+    form.set("image", image, `ticket-frame-${Number(metadata?.at_ms) || 0}.jpg`);
+    return this.request(
+      "POST",
+      `viewings/${encodeURIComponent(viewingId)}/ticket-frame-captures`,
+      { form },
+    );
+  }
+
+  selectTicketFrameCapture(viewingId, captureId) {
+    return this.request("PUT", `viewings/${encodeURIComponent(viewingId)}/ticket-frame`, {
+      body: { capture_id: captureId },
+    });
+  }
+
+  clearTicketFrame(viewingId) {
+    return this.request("DELETE", `viewings/${encodeURIComponent(viewingId)}/ticket-frame`);
+  }
+
+  listTickets() {
+    return this.request("GET", "tickets");
+  }
+
+  updateTicketTitle(ticketId, title) {
+    return this.request("PUT", `tickets/${encodeURIComponent(ticketId)}`, {
+      body: { title },
+    });
   }
 }

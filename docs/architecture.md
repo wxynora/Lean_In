@@ -56,6 +56,7 @@ The Python package owns:
 - risk-event and timed-action validation;
 - client sample-plan contracts;
 - client-lease and worker-cancellation semantics.
+- trusted viewing-duration, cross-part completion, and stable ticket semantics.
 
 It does not own an HTTP framework, database, video player, UI toolkit, chat model transport, or
 provider account. It ships replaceable default analysis and knowledge-card prompts so integrations
@@ -76,7 +77,7 @@ share the same evidence and spoiler boundaries without inheriting private produc
 | `PlotRecallAdapter` | Retrieve related chunks from the active session and watched range only. |
 | `ContextHostAdapter` | Convert a context envelope into the host model's request format. |
 | `ActionTransport` | Deliver validated timed actions to the correct client session. |
-| `RuntimeStore` | Persist sessions, leases, jobs, plans, chunks, risks, and idempotency records. |
+| `RuntimeStore` | Persist sessions, leases, jobs, plans, chunks, risks, viewings, tickets, and idempotency records. |
 
 ## Media Identity and Time
 
@@ -134,11 +135,42 @@ unlock playback
     |
     v
 DELETE session or lease expiry -> cancel work -> purge temporary material
+                                      |
+                                      +--> return an existing earned ticket; never invent completion
 ```
 
 Preparation is user-visible. A host must not call a session synchronized merely because a player
 element loaded. It is synchronized only after the gateway has accepted the real media descriptor,
 preparation has reached a confirmable state, and the start gate has been resolved.
+
+## Viewing Completion and Tickets
+
+One playback session is not necessarily one completed work. A `viewing_id` groups the selected
+parts or episodes that belong to the same watch. Each accepted playback snapshot updates trusted
+viewing time from the smaller of server-observed elapsed time and media movement adjusted by the
+previous playback rate. Preparation, pause, and seek jumps do not count.
+
+The completion boundary is `content_end_ms` when the viewer supplied one, otherwise the real media
+duration. A part completes only after playback was unlocked, the authoritative playhead reached that
+boundary, and either trusted continuous playback advanced in the same epoch or the player explicitly
+reported `media_ended`. Ending or deleting a session never fabricates completion.
+
+Session cleanup, saved progress, and completed viewing are separate state transitions. Saved progress
+keeps the authoritative playhead and committed plot analysis under the same `viewing_id`, so a new
+session can resume without fabricating or redoing already cached scenes. It creates no ticket.
+
+An explicit completed-viewing action clears resumable progress and creates one stable structured
+ticket even when the natural media-end signal was not reached; the separate `completed` field still
+reports that fact truthfully. The ticket ID is deterministic for the viewing, retries return the same
+ticket, and completion starts the completed-analysis cache TTL exactly once. The reference default
+is 24 hours and hosts may configure it. Raw analysis samples and ordinary visual frames are always
+cleaned up immediately. User-confirmed JPEG captures instead belong to the viewing and survive part
+changes, save progress, completion, and clearing the current ticket back; the ticket stores only the
+currently selected capture reference.
+
+`ViewingLedger` provides the tested storage-neutral reference state machine; production hosts persist
+its equivalent records. Tickets are standalone Lean In data and do not imply integration with a
+personal watchlist or other private product storage.
 
 ## Local Media Flow
 

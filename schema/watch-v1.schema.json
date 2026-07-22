@@ -187,6 +187,230 @@
         "expires_at": { "type": "string", "minLength": 1 }
       }
     },
+    "viewingPart": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "part_key",
+        "media_id",
+        "part_index",
+        "part_title",
+        "played_duration_ms",
+        "completed_at",
+        "completion_event_id",
+        "last_session_id"
+      ],
+      "properties": {
+        "part_key": { "type": "string", "minLength": 1 },
+        "media_id": { "type": "string", "minLength": 1 },
+        "part_index": { "type": "integer", "minimum": 1 },
+        "part_title": { "type": "string" },
+        "played_duration_ms": { "type": "integer", "minimum": 0 },
+        "completed_at": { "type": "string" },
+        "completion_event_id": { "type": "string" },
+        "last_session_id": { "type": "string" }
+      }
+    },
+    "viewingFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["frame_id", "media_id", "at_ms", "image_url", "selected_at"],
+      "properties": {
+        "frame_id": { "type": "string", "minLength": 1 },
+        "media_id": { "type": "string", "minLength": 1 },
+        "at_ms": { "type": "integer", "minimum": 0 },
+        "image_url": { "type": "string", "minLength": 1 },
+        "selected_at": { "type": "string", "minLength": 1 }
+      }
+    },
+    "viewingFrameCapture": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "frame_id",
+        "viewing_id",
+        "session_id",
+        "media_id",
+        "timeline_epoch",
+        "at_ms",
+        "width",
+        "height",
+        "mime_type",
+        "image_url",
+        "created_at"
+      ],
+      "properties": {
+        "frame_id": { "type": "string", "minLength": 1 },
+        "viewing_id": { "type": "string", "minLength": 1 },
+        "session_id": { "type": "string", "minLength": 1 },
+        "media_id": { "type": "string", "minLength": 1 },
+        "timeline_epoch": { "type": "integer", "minimum": 0 },
+        "at_ms": { "type": "integer", "minimum": 0 },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "mime_type": { "const": "image/jpeg" },
+        "image_url": { "type": "string", "minLength": 1 },
+        "created_at": { "type": "string", "minLength": 1 }
+      }
+    },
+    "viewingTicket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "ticket_id",
+        "viewing_id",
+        "work_key",
+        "title",
+        "cover_url",
+        "companion",
+        "created_at",
+        "completed_at",
+        "played_duration_ms",
+        "part_count",
+        "completed_parts",
+        "last_session_id",
+        "back_frame"
+      ],
+      "properties": {
+        "ticket_id": { "type": "string", "minLength": 1 },
+        "viewing_id": { "type": "string", "minLength": 1 },
+        "work_key": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "cover_url": { "type": "string" },
+        "companion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name"],
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" }
+          }
+        },
+        "created_at": { "type": "string", "minLength": 1 },
+        "completed_at": { "type": "string", "minLength": 1 },
+        "played_duration_ms": { "type": "integer", "minimum": 0 },
+        "part_count": { "type": "integer", "minimum": 1 },
+        "completed_parts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/viewingPart" }
+        },
+        "last_session_id": { "type": "string" },
+        "back_frame": {
+          "oneOf": [
+            { "$ref": "#/$defs/viewingFrame" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "viewingProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "viewing_id",
+        "work_key",
+        "title",
+        "cover_url",
+        "source",
+        "source_reference",
+        "media_id",
+        "part_key",
+        "part_index",
+        "part_count",
+        "part_title",
+        "playhead_ms",
+        "duration_ms",
+        "played_duration_ms",
+        "saved_at",
+        "analysis_covered_until_ms",
+        "analysis_retained",
+        "ticket_back_frame"
+      ],
+      "properties": {
+        "viewing_id": { "type": "string", "minLength": 1 },
+        "work_key": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "cover_url": { "type": "string" },
+        "source": { "type": "string", "minLength": 1 },
+        "source_reference": { "type": "string" },
+        "media_id": { "type": "string", "minLength": 1 },
+        "part_key": { "type": "string", "minLength": 1 },
+        "part_index": { "type": "integer", "minimum": 1 },
+        "part_count": { "type": "integer", "minimum": 1 },
+        "part_title": { "type": "string" },
+        "playhead_ms": { "type": "integer", "minimum": 0 },
+        "duration_ms": { "type": "integer", "minimum": 1 },
+        "played_duration_ms": { "type": "integer", "minimum": 0 },
+        "saved_at": { "type": "string", "minLength": 1 },
+        "analysis_covered_until_ms": { "type": "integer", "minimum": 0 },
+        "analysis_retained": { "const": true },
+        "ticket_back_frame": {
+          "oneOf": [
+            { "$ref": "#/$defs/viewingFrame" },
+            { "type": "null" }
+          ]
+        }
+      }
+    },
+    "viewingSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "viewing_id",
+        "work_key",
+        "title",
+        "cover_url",
+        "companion",
+        "part_count",
+        "parts",
+        "played_duration_ms",
+        "completed",
+        "completed_at",
+        "ticket",
+        "created_at",
+        "updated_at",
+        "progress",
+        "completed_analysis_cache_expires_at"
+      ],
+      "properties": {
+        "viewing_id": { "type": "string", "minLength": 1 },
+        "work_key": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "cover_url": { "type": "string" },
+        "companion": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "name"],
+          "properties": {
+            "id": { "type": "string" },
+            "name": { "type": "string" }
+          }
+        },
+        "part_count": { "type": "integer", "minimum": 1 },
+        "parts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/viewingPart" }
+        },
+        "played_duration_ms": { "type": "integer", "minimum": 0 },
+        "completed": { "type": "boolean" },
+        "completed_at": { "type": "string" },
+        "ticket": {
+          "oneOf": [
+            { "$ref": "#/$defs/viewingTicket" },
+            { "type": "null" }
+          ]
+        },
+        "created_at": { "type": "string", "minLength": 1 },
+        "updated_at": { "type": "string", "minLength": 1 },
+        "progress": {
+          "oneOf": [
+            { "$ref": "#/$defs/viewingProgress" },
+            { "type": "null" }
+          ]
+        },
+        "completed_analysis_cache_expires_at": { "type": "string" }
+      }
+    },
     "danmakuToolInput": {
       "type": "object",
       "additionalProperties": false,

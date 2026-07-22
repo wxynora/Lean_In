@@ -55,6 +55,13 @@ time, message time, or a pre-generated reaction script.
 - Client-managed sparse frame/audio plans with an allowed media range and expiry time.
 - Independent client leases, atomic session ending, queued-job cancellation, running-job
   cancellation requests, and worker guard checkpoints.
+- Server-observed viewing duration, cross-part `viewing_id` aggregation, real completion gates,
+  stable structured tickets, and a persistent ticket-shelf contract.
+- Distinct technical cleanup, resumable save-progress, and completed-viewing transitions.
+- Saved playback plus retained plot analysis for Recent Watch, and a configurable 24-hour default
+  TTL for plot analysis only after a viewing is marked complete.
+- Viewing-level persistence for multiple user-confirmed JPEG captures, plus one independently
+  selected ticket back that can be changed after completion.
 - A browser reference client with real session creation, heartbeat, status polling, playback
   snapshots, preparation gates, local subtitles, sparse frame extraction, risk UI, and host chat
   integration.
@@ -217,6 +224,13 @@ Change it with `watchApiBasePath` in `web/config.js`.
 | `GET` | `/sessions` | List active/recent sessions for a window. |
 | `POST` | `/sessions` | Idempotently create a session after media capability detection. |
 | `GET` | `/sessions/{id}/status` | Read preparation, playback, analysis, sample plan, risks, and start gate. |
+| `GET` | `/viewings?status=resumable` | List saved viewing progress for Recent Watch. |
+| `GET` | `/viewings/{id}` | Restore one cross-part viewing summary and its stable ticket. |
+| `GET` / `POST` | `/viewings/{id}/ticket-frame-captures` | List or save user-confirmed ticket screenshots. |
+| `GET` | `/viewings/{id}/ticket-frame-captures/{capture_id}/image` | Read one authenticated persistent screenshot. |
+| `PUT` / `DELETE` | `/viewings/{id}/ticket-frame` | Select or clear one retained analysis frame for the ticket back. |
+| `GET` | `/tickets` | List completed structured tickets for the ticket shelf. |
+| `PUT` | `/tickets/{id}` | Save an edited ticket title. |
 | `POST` | `/sessions/{id}/heartbeat` | Renew the independent client lease. |
 | `PUT` | `/sessions/{id}/playback` | Apply an authoritative player snapshot. |
 | `POST` | `/sessions/{id}/start` | Confirm/skip preparation and enter the initial plot-coverage gate. |
@@ -225,7 +239,7 @@ Change it with `watchApiBasePath` in `web/config.js`.
 | `POST` | `/sessions/{id}/subtitles/retry` | Retry a configured network subtitle provider. |
 | `POST` | `/sessions/{id}/local-subtitles` | Submit selected local SRT/VTT text and alignment metadata. |
 | `POST` | `/sessions/{id}/analysis/samples` | Submit only material authorized by a client sample plan. |
-| `DELETE` | `/sessions/{id}` | End the session, cancel/purge remaining work, and return reported analysis cost. |
+| `DELETE` | `/sessions/{id}` | Cleanup, save progress, or complete the viewing according to `viewing_action`. |
 | `GET` | `/bilibili/parts` | Resolve title, real duration, and all parts for a BV ID. |
 
 ### Create a Local Session
@@ -404,6 +418,13 @@ Subtitle lookup is also optional. Supported adapter choices include:
 
 No provider should be configured as an implicit requirement. Use an explicit `not_configured` or
 `not_found` state and continue with audio plus frames when possible.
+
+TMDB identity resolution is an optional manual-retry enhancement, not another subtitle provider.
+Leave `tmdb_identity.enabled=false` to use ordinary title/original-title lookup only. When enabled,
+the host reads `TOGETHER_WATCH_TMDB_READ_ACCESS_TOKEN` on the server and may resolve one TMDB movie
+or TV ID after the first subtitle lookup has already failed and the viewer explicitly retries. The
+token must never be exposed through `web/config.js` or sent to the browser. TMDB absence or failure
+must not block SubDL title lookup, local subtitles, or playback.
 
 For network providers, keep subtitle waits independent from long media-extraction timeouts. The
 included `SubtitleLookupPolicy` defaults to 15 seconds per request, 45 seconds for one lookup, and

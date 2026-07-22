@@ -41,6 +41,7 @@ from .models import (
     ActionValidation,
     AudioSelection,
     ClientCapabilities,
+    CompanionIdentity,
     ContextEnvelope,
     DanmakuAction,
     FearMode,
@@ -58,6 +59,14 @@ from .models import (
     SnapshotApplyResult,
     SubtitleSelection,
     VisualContextMode,
+    ViewingExitAction,
+    ViewingFrame,
+    ViewingFrameCapture,
+    ViewingPartSummary,
+    ViewingProgress,
+    ViewingSummary,
+    ViewingTicket,
+    ViewingUpdateResult,
     WatchSession,
 )
 from .recall import Bm25PlotRecall
@@ -80,6 +89,7 @@ from .providers import (
     KnowledgeSearchMode,
     ModelProviderConfig,
     ProviderSettings,
+    TmdbIdentityConfig,
     build_knowledge_search_query,
 )
 from .provider_response import (
@@ -104,6 +114,12 @@ from .timeline import (
     reply_arrival_until_ms,
     scheduled_future_until_ms,
 )
+from .viewing import (
+    DEFAULT_COMPLETED_ANALYSIS_TTL_SECONDS,
+    ViewingError,
+    ViewingLedger,
+    derive_work_key,
+)
 
 __all__ = [
     "ActionTransport",
@@ -116,10 +132,12 @@ __all__ = [
     "Bm25PlotRecall",
     "ClientCapabilities",
     "ClientSampleExporter",
+    "CompanionIdentity",
     "ContextEnvelope",
     "ContextHostAdapter",
     "COMPANION_VISUAL_USER_LABEL",
     "DEFAULT_DANMAKU_MARKER",
+    "DEFAULT_COMPLETED_ANALYSIS_TTL_SECONDS",
     "DEFAULT_INITIAL_READY_BUFFER_MS",
     "DEFAULT_PREFETCH_AHEAD_MS",
     "DEFAULT_ROLLING_BATCH_MS",
@@ -159,7 +177,18 @@ __all__ = [
     "SubtitleLookupDeadlineExceeded",
     "SubtitleLookupPolicy",
     "TimelineTracker",
+    "TmdbIdentityConfig",
     "VisualContextMode",
+    "ViewingError",
+    "ViewingExitAction",
+    "ViewingFrame",
+    "ViewingFrameCapture",
+    "ViewingLedger",
+    "ViewingPartSummary",
+    "ViewingProgress",
+    "ViewingSummary",
+    "ViewingTicket",
+    "ViewingUpdateResult",
     "WatchCore",
     "WatchCoreError",
     "WatchSession",
@@ -175,6 +204,7 @@ __all__ = [
     "advance_through_cached_intervals",
     "cached_interval_at",
     "deduplicate_subtitle_candidates",
+    "derive_work_key",
     "evaluate_start_gate",
     "extract_structured_object",
     "merge_analysis_usage",

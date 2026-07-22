@@ -2569,29 +2569,61 @@ label.file-picker:focus-within {
   font-weight: 500;
 }
 
-/* Together Watch action buttons use the restored white/black treatment. */
+/* Together Watch buttons keep the established black/pink treatment. */
 .icon-button,
 .stage-icon-button,
 .top-bar-link,
 .text-button,
 .secondary-button,
+.segment,
+.option-button,
+.choice-chip,
 .menu-popover button,
 .risk-warning button,
 .part-navigation button,
+.part-list button,
+.inline-part-selector button,
 .capture-frame-button,
 .ticket-edit-popover button,
-.dialog-close-button,
+.ticket-sort-choice,
+.dialog-close-button {
+  border-color: var(--watch-pink);
+  background: var(--watch-bg);
+  color: var(--watch-pink);
+}
+
 .primary-button,
 .danger-text-button,
-.message-composer button {
-  border-color: #fff;
-  background: #fff;
+.message-composer button,
+.segment.is-selected,
+.option-button.is-selected,
+.choice-chip.is-selected,
+.part-list button.is-selected,
+.inline-part-selector button.is-selected,
+.ticket-sort-choice.is-selected {
+  border-color: var(--watch-pink);
+  background: var(--watch-pink);
+  color: var(--watch-bg);
+}
+
+.current-part-button strong,
+.current-part-button small {
+  color: var(--watch-pink);
+}
+
+.ticket-sort-choice small {
+  color: rgba(212, 155, 169, 0.7);
+}
+
+.ticket-sort-choice.is-selected strong,
+.ticket-sort-choice.is-selected small,
+.ticket-sort-choice.is-selected b {
   color: var(--watch-bg);
 }
 
 .ticket-edit-popover button:hover,
 .ticket-edit-popover button:focus-visible {
-  background: #fff;
+  background: var(--watch-pink);
   color: var(--watch-bg);
 }
 
@@ -2600,11 +2632,17 @@ label.file-picker:focus-within {
 .top-bar-link:disabled,
 .text-button:disabled,
 .secondary-button:disabled,
+.segment:disabled,
+.option-button:disabled,
+.choice-chip:disabled,
 .menu-popover button:disabled,
 .risk-warning button:disabled,
 .part-navigation button:disabled,
+.part-list button:disabled,
+.inline-part-selector button:disabled,
 .capture-frame-button:disabled,
 .ticket-edit-popover button:disabled,
+.ticket-sort-choice:disabled,
 .dialog-close-button:disabled,
 .primary-button:disabled,
 .danger-text-button:disabled,
@@ -2615,9 +2653,32 @@ label.file-picker:focus-within {
 .primary-button:disabled,
 .danger-text-button:disabled,
 .message-composer button:disabled {
+  border-color: var(--watch-pink);
+  background: var(--watch-pink);
+  color: var(--watch-bg);
+}
+
+/* Only dialog action buttons override that treatment with white/black. */
+.ticket-image-editor-actions button,
+.watch-end-choice-actions button,
+.capture-preview-actions button,
+.watch-end-actions button,
+.ticket-frame-actions button,
+#ticket-frame-close,
+.dialog-close-button {
   border-color: #fff;
   background: #fff;
   color: var(--watch-bg);
+}
+
+.ticket-image-editor-actions button:disabled,
+.watch-end-choice-actions button:disabled,
+.capture-preview-actions button:disabled,
+.watch-end-actions button:disabled,
+.ticket-frame-actions button:disabled,
+#ticket-frame-close:disabled,
+.dialog-close-button:disabled {
+  opacity: 0.38;
 }
 
 .video-stage:fullscreen,

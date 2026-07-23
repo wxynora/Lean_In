@@ -95,6 +95,45 @@ The core does not inject viewer names, companion names, relationship prompts, ch
 paths, cookies, or credentials. Product-specific visible chat context belongs in
 `ContextHostAdapter`, after media analysis has completed.
 
+## Portable Analysis Worker
+
+`AnalysisWorker` provides the framework-neutral execution path for one claimed analysis task. It
+does not open a network port or choose a database, queue, or model vendor. The integrating host
+implements `AnalysisWorkerRuntime` and `AnalysisWorkerModel`, then calls `run_once()` from its own
+process manager or queue loop.
+
+The runner performs these boundaries in order:
+
+1. claim one task with a worker lease;
+2. recheck session, client lease, cancellation, and timeline state;
+3. load the work specification and authorized sample plan;
+4. acquire only the media parts allowed by that plan;
+5. recheck state immediately before the model call;
+6. record provider usage immediately after a real response;
+7. recheck state before committing;
+8. ask the runtime to atomically validate ownership and commit the result;
+9. release temporary samples on every exit path.
+
+Provider adapters return `StructuredProviderResult`. Transport or parsing failures may raise
+`WorkerProviderError` with normalized usage and a `retryable` decision. The runner does not impose a
+retry count or output-token limit; queue policy remains explicit host configuration.
+
+```python
+from together_watch import AnalysisWorker
+
+worker = AnalysisWorker(
+    runtime=my_runtime_store,
+    model=my_model_adapter,
+    now_ms=clock.now_ms,
+)
+
+result = worker.run_once()
+```
+
+`AnalysisWorkerRuntime.commit_result()` is the final race boundary. It must atomically verify the
+worker lease and current session state before storing plot chunks, risks, coverage, and completion.
+Returning a canonical skip reason prevents stale provider output from being committed.
+
 For that final host-owned step, `build_companion_context_prompt()` renders a `ContextEnvelope` into
 the included Chinese placeholder template. Its defaults are `{assistant}`, `{viewer}`, and `{work}`;
 the integrating application replaces them with its own display names. The result is a dynamic system

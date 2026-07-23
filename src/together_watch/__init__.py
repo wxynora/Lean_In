@@ -127,6 +127,16 @@ from .viewing import (
     ViewingLedger,
     derive_work_key,
 )
+from .worker import (
+    AnalysisWorker,
+    AnalysisWorkerModel,
+    AnalysisWorkerRuntime,
+    AnalysisWorkSpec,
+    WorkerClaim,
+    WorkerProviderError,
+    WorkerRunResult,
+    WorkerRunStatus,
+)
 
 __all__ = [
     "ActionTransport",
@@ -135,6 +145,10 @@ __all__ = [
     "SESSION_COST_PURPOSES",
     "AnalysisProvider",
     "AnalysisCostSummary",
+    "AnalysisWorker",
+    "AnalysisWorkerModel",
+    "AnalysisWorkerRuntime",
+    "AnalysisWorkSpec",
     "AudioSelection",
     "Bm25PlotRecall",
     "ClientCapabilities",
@@ -208,6 +222,10 @@ __all__ = [
     "WorkCoordinator",
     "WorkItem",
     "WorkStatus",
+    "WorkerClaim",
+    "WorkerProviderError",
+    "WorkerRunResult",
+    "WorkerRunStatus",
     "build_context_envelope",
     "build_analysis_prompt",
     "build_companion_context_prompt",

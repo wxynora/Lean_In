@@ -117,7 +117,8 @@ To connect Lean In to an existing product, the host application must:
 
 1. implement the watch API contract in [Protocol](docs/protocol.md), including session, playback,
    preparation, analysis, viewing, and ticket persistence;
-2. connect its own storage, authentication, background worker, and analysis-model adapter;
+2. connect its own storage, authentication, and analysis-model adapter to the included portable
+   `AnalysisWorker`;
 3. configure `web/config.js` with the gateway URL and authentication headers;
 4. provide the player and real-chat hooks documented in [Web Client Setup](web/README.md).
 

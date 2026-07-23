@@ -3,13 +3,13 @@
 ## LEAN-IN-REPLY-LATENCY-VISUAL-PANELS-20260723
 
 - Mode: construction
-- Status: shipping to `origin/main`
+- Status: complete and pushed to `origin/main`
 - Objective: synchronize only two portable co-watching improvements: per-session reply-display latency calibration and four-panel visual selection based on current, recalled, and expected-arrival plot positions.
 - Evidence scope: `src/together_watch/{models,timeline,context,core,adapters,__init__}.py`, one new visual helper module, the matching Web host/API/message path, `README.md`, `docs/{architecture,protocol}.md`, and focused Python/Web tests for these two contracts.
 - Write scope: exactly the evidence files above, focused tests, and this task section.
 - Excluded: semantic/Qwen recall, previous-turn recall anchors, private gateway names/configuration, analysis providers/prompts, subtitles, viewing/tickets, unrelated Web UI, deployment, and external requests.
 - Acceptance: fixed configured delay remains the initial fallback; one latency sample exists per chat job and client-displayed timing may replace the gateway estimate; no sample-history truncation is introduced; context uses the current session average adjusted by playback rate; four visual panels target current plot, the top recalled plot, expected-arrival plot, and reply-arrival boundary while deduplicating frames; focused tests and scoped diff checks pass.
-- Verification: focused Python timeline/context/core/visual tests passed 29 tests; focused Web API tests passed 5 tests; `node --check web/app.js`, scoped Python compilation, and `git diff --check` passed. Staging and `origin/main` push are in progress; no full suite, build, external request, or deployment was performed.
+- Verification: focused Python timeline/context/core/visual tests passed 29 tests; focused Web API tests passed 5 tests; `node --check web/app.js`, scoped Python compilation, and `git diff --check` passed. Implementation commit `a0b351c` was pushed to `origin/main`; no full suite, build, external request, or deployment was performed.
 
 ## LEAN-IN-BILIBILI-STREAM-FALLBACK-20260723
 

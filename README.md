@@ -23,6 +23,11 @@ The repository contains:
 >
 > **License:** source-available under the PolyForm Noncommercial License 1.0.0. Commercial use is
 > not permitted. See [License](#license).
+>
+> **Integration notice:** Lean In is an integration-oriented runtime, not a one-click standalone
+> application. This repository intentionally does not ship a production HTTP gateway, database,
+> authentication system, task queue, or configured model provider. Serving the Web client by itself
+> only loads the interface; co-watching requires a compatible host backend.
 
 ## Why This Exists
 
@@ -105,6 +110,20 @@ below, but the route prefix and authentication headers are configurable.
 Read [Architecture](docs/architecture.md), [Protocol](docs/protocol.md),
 [Provider and Prompt Integration](docs/providers.md), and [Privacy](docs/privacy.md) for the deeper
 contracts.
+
+## What Integrators Must Provide
+
+To connect Lean In to an existing product, the host application must:
+
+1. implement the watch API contract in [Protocol](docs/protocol.md), including session, playback,
+   preparation, analysis, viewing, and ticket persistence;
+2. connect its own storage, authentication, background worker, and analysis-model adapter;
+3. configure `web/config.js` with the gateway URL and authentication headers;
+4. provide the player and real-chat hooks documented in [Web Client Setup](web/README.md).
+
+Knowledge search, network subtitle providers, and TMDB identity resolution are optional
+enhancements. A host may omit them and expose the documented degraded states instead. The repository
+does not require a particular HTTP framework, database, queue, or model vendor.
 
 ## Quick Start
 

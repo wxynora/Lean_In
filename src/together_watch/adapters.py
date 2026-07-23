@@ -8,6 +8,7 @@ from .models import (
     DanmakuAction,
     PlaybackSnapshot,
     PlotChunk,
+    ReplyLatencySample,
     RiskEvent,
     SamplePlan,
     WatchSession,
@@ -147,6 +148,13 @@ class ContextHostAdapter(Protocol):
 class ActionTransport(Protocol):
     def send(self, action: DanmakuAction) -> None:
         """Deliver a validated timed action to the active client."""
+
+
+@runtime_checkable
+class ReplyLatencyStore(Protocol):
+    def save_reply_latency_sample(self, sample: ReplyLatencySample) -> None: ...
+
+    def list_reply_latency_samples(self, session_id: str) -> Sequence[ReplyLatencySample]: ...
 
 
 @runtime_checkable

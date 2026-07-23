@@ -254,6 +254,27 @@ and therefore cannot advance `covered_until_ms`.
 For a chat message, capture a fresh snapshot in the same user action and send it with
 `watch_session_id`. Do not reuse the last periodic heartbeat snapshot.
 
+## Reply Display Latency
+
+The server records the first gateway-visible assistant event as one provisional sample per chat job.
+When the client actually renders the first assistant text, it may replace that estimate:
+
+`POST /sessions/{session_id}/reply-displayed`
+
+```json
+{
+  "job_id": "chat_job_...",
+  "visible_latency_ms": 12346
+}
+```
+
+`visible_latency_ms` is measured from the viewer's send action to the first rendered assistant text.
+It must be non-negative. Repeating the same `job_id` replaces that job's sample; it does not increase
+the sample count. The session average becomes the next context window's wall-clock reply lead, and
+playback rate converts it to media time. Before any sample exists, use the configured `reply_lead_ms`.
+Production `ReplyLatencyStore` implementations persist the samples for the session without silently
+truncating their history.
+
 ## Status
 
 `GET /sessions/{session_id}/status`
@@ -266,6 +287,7 @@ The response is intentionally additive. The reference Web client reads these are
   "session": { "session_id": "watch_...", "state": "preparing" },
   "client_lease": { "client_seen_at": "...", "expires_at": "...", "valid": true },
   "playback": { "playhead_ms": 90000, "timeline_epoch": 0, "snapshot_seq": 3 },
+  "reply_latency": { "sample_count": 2, "average_latency_ms": 12346, "latest_source": "client_displayed" },
   "preparation": {
     "stage": "building_card",
     "can_confirm": false,
@@ -713,8 +735,11 @@ The host creates model-visible context from a message snapshot:
 {
   "session_id": "watch_...",
   "media_id": "demo:episode-1",
+  "timeline_epoch": 0,
   "message_playhead_ms": 90000,
   "reply_arrival_until_ms": 120000,
+  "reply_latency": { "sample_count": 2, "average_latency_ms": 12346 },
+  "visual_related_chunk_id": "chunk_top_recall",
   "story_background": "optional continuity reference",
   "related_watched_chunks": [],
   "current_chunks": [],
@@ -725,6 +750,8 @@ The host creates model-visible context from a message snapshot:
 
 - `story_background` appears only under the selected preparation mode.
 - `related_watched_chunks` comes only from cached, already watched chunks in this session.
+- `visual_related_chunk_id` preserves the top recalled chunk for visual selection even when prompt
+  chunks are rendered in chronological order.
 - `current_chunks` intersects the message playhead.
 - `reply_arrival_chunks` ends no later than `reply_arrival_until_ms`.
 - `scheduled_future_chunks` may drive timed actions but never visible reply prose.
@@ -734,9 +761,12 @@ envelope. It produces a Chinese dynamic system message using `{assistant}`, `{vi
 The renderer is deliberately separate from personality or relationship prompts. A host may translate
 or replace the template while preserving the same time boundaries.
 
-When visual context is enabled, add the contact sheet as a separate user image content block labeled
-`【剧情画面】` immediately before the real viewer message. Images do not change the visible-reply and
-scheduled-future time boundaries above.
+When visual context is enabled, `select_contact_sheet_panels()` chooses up to four deduplicated frames
+for current plot, the top recalled plot, expected-arrival plot, and the reply-arrival boundary. It
+filters by session, media, epoch, and `reply_arrival_until_ms`. The host composes the selected frames
+and adds the contact sheet as a separate user image content block labeled `【剧情画面】` immediately
+before the real viewer message. Images do not change the visible-reply and scheduled-future time
+boundaries above.
 
 ## Plot Chunk
 

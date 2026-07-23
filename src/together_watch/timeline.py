@@ -2,10 +2,63 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .models import PlaybackSnapshot, SnapshotApplyResult
+from .models import (
+    PlaybackSnapshot,
+    ReplyLatencyProfile,
+    ReplyLatencySample,
+    SnapshotApplyResult,
+)
 
 
 MAX_FUTURE_WINDOW_MS = 120_000
+
+
+class ReplyLatencyTracker:
+    """Keep one replaceable latency sample per chat job for one host runtime."""
+
+    def __init__(self) -> None:
+        self._samples: dict[tuple[str, str], ReplyLatencySample] = {}
+
+    def record(
+        self,
+        *,
+        session_id: str,
+        job_id: str,
+        latency_ms: int,
+        source: str = "gateway_first_visible",
+    ) -> ReplyLatencyProfile:
+        sample = ReplyLatencySample(
+            job_id=job_id,
+            session_id=session_id,
+            latency_ms=latency_ms,
+            source=source,
+        )
+        key = (sample.session_id, sample.job_id)
+        self._samples.pop(key, None)
+        self._samples[key] = sample
+        return self.profile(session_id)
+
+    def profile(self, session_id: str) -> ReplyLatencyProfile:
+        samples = [
+            sample
+            for (sample_session_id, _), sample in self._samples.items()
+            if sample_session_id == session_id
+        ]
+        if not samples:
+            return ReplyLatencyProfile(sample_count=0, average_latency_ms=0)
+        latest = samples[-1]
+        return ReplyLatencyProfile(
+            sample_count=len(samples),
+            average_latency_ms=round(
+                sum(sample.latency_ms for sample in samples) / len(samples)
+            ),
+            latest_latency_ms=latest.latency_ms,
+            latest_source=latest.source,
+        )
+
+    def clear_session(self, session_id: str) -> None:
+        for key in [key for key in self._samples if key[0] == session_id]:
+            self._samples.pop(key, None)
 
 
 def merge_cached_intervals(

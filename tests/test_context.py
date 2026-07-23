@@ -7,6 +7,7 @@ from together_watch import (
     KnowledgeMode,
     PlaybackSnapshot,
     PlotChunk,
+    ReplyLatencyProfile,
     SessionMode,
     build_context_envelope,
 )
@@ -131,6 +132,29 @@ class ContextEnvelopeTest(unittest.TestCase):
         )
 
         self.assertEqual(result.related_watched_chunks, (valid,))
+
+    def test_observed_reply_latency_replaces_the_configured_initial_delay(self) -> None:
+        arrival = chunk("arrival", 110_000, 118_000, "The door opens.")
+
+        result = build_context_envelope(
+            session_id="watch_demo",
+            snapshot=playback(),
+            mode=SessionMode(
+                knowledge_mode=KnowledgeMode.NEEDS_SUMMARY,
+                reply_lead_ms=30_000,
+            ),
+            chunks=(arrival,),
+            reply_latency=ReplyLatencyProfile(
+                sample_count=2,
+                average_latency_ms=12_000,
+                latest_latency_ms=10_000,
+                latest_source="client_displayed",
+            ),
+        )
+
+        self.assertEqual(result.reply_arrival_until_ms, 112_000)
+        self.assertEqual(result.reply_arrival_chunks, (arrival,))
+        self.assertEqual(result.reply_latency.average_latency_ms, 12_000)
 
 
 class Bm25PlotRecallTest(unittest.TestCase):

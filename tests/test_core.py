@@ -111,6 +111,36 @@ class WatchCoreTest(unittest.TestCase):
         self.assertEqual(result.reason, "session_not_started")
         self.assertIsNone(session.snapshot)
 
+    def test_recorded_reply_latency_changes_the_next_context_window(self) -> None:
+        session = self.create_session()
+        self.core.start_session(session.session_id)
+        self.core.apply_snapshot(session.session_id, snapshot())
+        self.core.add_plot_chunks(
+            session.session_id,
+            [
+                PlotChunk(
+                    chunk_id="arrival",
+                    session_id=session.session_id,
+                    timeline_epoch=0,
+                    start_ms=110_000,
+                    end_ms=118_000,
+                    summary="The door opens.",
+                )
+            ],
+        )
+        self.core.record_reply_latency(
+            session.session_id,
+            job_id="job-1",
+            latency_ms=12_000,
+            source="client_displayed",
+        )
+
+        context = self.core.build_context(session.session_id)
+
+        self.assertEqual(context.reply_arrival_until_ms, 112_000)
+        self.assertEqual(context.reply_arrival_chunks[0].chunk_id, "arrival")
+        self.assertEqual(context.reply_latency.latest_source, "client_displayed")
+
     def test_danmaku_is_validated_and_deduplicated(self) -> None:
         session = self.create_session()
         self.core.start_session(session.session_id)

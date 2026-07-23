@@ -614,6 +614,64 @@ class ContextEnvelope:
     current_chunks: tuple[PlotChunk, ...]
     reply_arrival_chunks: tuple[PlotChunk, ...]
     scheduled_future_chunks: tuple[PlotChunk, ...]
+    timeline_epoch: int = 0
+    visual_related_chunk_id: str = ""
+    reply_latency: ReplyLatencyProfile | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ReplyLatencySample:
+    job_id: str
+    session_id: str
+    latency_ms: int
+    source: str = "gateway_first_visible"
+
+    def __post_init__(self) -> None:
+        _require_text("job_id", self.job_id)
+        _require_text("session_id", self.session_id)
+        _require_non_negative("latency_ms", self.latency_ms)
+        if self.source not in {"gateway_first_visible", "client_displayed"}:
+            raise ValueError("reply latency source is unsupported")
+
+
+@dataclass(frozen=True, slots=True)
+class ReplyLatencyProfile:
+    sample_count: int
+    average_latency_ms: int
+    latest_latency_ms: int = 0
+    latest_source: str = ""
+
+    def __post_init__(self) -> None:
+        _require_non_negative("sample_count", self.sample_count)
+        _require_non_negative("average_latency_ms", self.average_latency_ms)
+        _require_non_negative("latest_latency_ms", self.latest_latency_ms)
+
+
+@dataclass(frozen=True, slots=True)
+class VisualFrame:
+    frame_id: str
+    session_id: str
+    media_id: str
+    timeline_epoch: int
+    at_ms: int
+
+    def __post_init__(self) -> None:
+        _require_text("frame_id", self.frame_id)
+        _require_text("session_id", self.session_id)
+        _require_text("media_id", self.media_id)
+        _require_non_negative("timeline_epoch", self.timeline_epoch)
+        _require_non_negative("at_ms", self.at_ms)
+
+
+@dataclass(frozen=True, slots=True)
+class VisualPanel:
+    role: str
+    purpose: str
+    frame: VisualFrame
+
+    def __post_init__(self) -> None:
+        _require_text("role", self.role)
+        _require_text("purpose", self.purpose)
 
 
 @dataclass(frozen=True, slots=True)

@@ -42,6 +42,10 @@ export class WatchHostBridge {
     return this.api.updatePlayback(sessionId, snapshot);
   }
 
+  reportReplyDisplayed(sessionId, jobId, visibleLatencyMs) {
+    return this.api.reportReplyDisplayed(sessionId, jobId, visibleLatencyMs);
+  }
+
   updateMode(sessionId, mode) {
     return this.api.updateMode(sessionId, mode);
   }

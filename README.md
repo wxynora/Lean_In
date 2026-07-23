@@ -42,10 +42,13 @@ time, message time, or a pre-generated reaction script.
 
 - Monotonic playback snapshots with `timeline_epoch` and `snapshot_seq`.
 - Seek and media-change invalidation for stale analysis, actions, and client sample plans.
-- A configurable reply-arrival window from 0 to 120 media seconds.
+- A configurable initial reply-arrival window from 0 to 120 media seconds, then session-local
+  calibration from one replaceable latency sample per chat job.
 - Session-only related-plot recall; no long-term chat or memory search.
 - Known-work and needs-background preparation modes selected explicitly before playback.
 - Optional work-background cards, subtitles, sparse visual context, and session-scoped plot chunks.
+- A portable four-panel selector for current plot, recalled plot, expected-arrival plot, and the
+  reply-arrival boundary; hosts remain responsible for composing and transporting the image.
 - Timed danmaku from native tool calls or hidden short markers, with shared validation against
   session, media, epoch, media time, and duplicate action IDs.
 - Confirmed risk windows for warning or client-side screen covering.
@@ -242,6 +245,7 @@ Change it with `watchApiBasePath` in `web/config.js`.
 | `PUT` | `/tickets/{id}` | Save an edited ticket title. |
 | `POST` | `/sessions/{id}/heartbeat` | Renew the independent client lease. |
 | `PUT` | `/sessions/{id}/playback` | Apply an authoritative player snapshot. |
+| `POST` | `/sessions/{id}/reply-displayed` | Replace the gateway estimate for one chat job with the client's first visible-reply latency. |
 | `POST` | `/sessions/{id}/start` | Confirm/skip preparation and enter the initial plot-coverage gate. |
 | `PUT` | `/sessions/{id}/mode` | Update supported runtime mode fields. |
 | `POST` | `/sessions/{id}/knowledge-card/regenerate` | Rebuild a pre-play background card. |
@@ -480,6 +484,11 @@ The Web client deliberately does not invent assistant messages. A host provides
 }
 ```
 
+To let the reference Web client replace the gateway estimate with actual first-render timing, the
+host response should include the stable chat `job_id` alongside `assistant_text` or assistant
+messages. Streaming hosts may report the same measurement directly when their first visible delta is
+rendered.
+
 The host can turn the returned context envelope into the companion's dynamic system message with the
 included private-name-free template:
 
@@ -499,8 +508,10 @@ system_text = build_companion_context_prompt(
 This prompt does not define the companion personality or generate a reply in advance. It only tells
 the real chat model what has happened at the message position, which watched chunks are relevant,
 what may happen before the reply arrives, and which later chunks are restricted to timed actions.
-For optional contact sheets, insert a separate user image block labeled `【剧情画面】` immediately
-before the real viewer message.
+For optional contact sheets, call `select_contact_sheet_panels(frames, context_envelope)` to choose
+up to four deduplicated frames from the current, recalled, and expected-arrival plot positions. The
+host composes those frames into one image, then inserts a separate user image block labeled
+`【剧情画面】` immediately before the real viewer message.
 
 Model-facing hosts may use either of two adapters:
 

@@ -1936,6 +1936,8 @@ function upsertMessage({
 
 async function sendMessage(text) {
   if (!bridge.canSendMessage()) throw new Error("请先配置 TogetherWatchHost.sendMessage");
+  const replyStartedAt = performance.now();
+  let replyDisplayReported = false;
   const sentAt = new Date().toISOString();
   const snapshot = await captureSnapshot();
   if (!snapshot) throw new Error("当前读不到准确播放位置");
@@ -1945,6 +1947,24 @@ async function sendMessage(text) {
     watch_session_id: state.session.session_id,
     watch_snapshot: snapshot,
   });
+  const reportDisplayed = (message = null) => {
+    if (replyDisplayReported) return;
+    const jobId = String(
+      message?.job_id
+      || message?.run_id
+      || result?.job_id
+      || result?.run_id
+      || result?.assistant_job_id
+      || "",
+    ).trim();
+    if (!jobId) return;
+    replyDisplayReported = true;
+    void bridge.reportReplyDisplayed(
+      state.session.session_id,
+      jobId,
+      performance.now() - replyStartedAt,
+    ).catch(() => {});
+  };
   upsertMessage({ speaker: "你", text, isUser: true, createdAt: sentAt });
   if (result?.assistant_text) {
     upsertMessage({
@@ -1953,6 +1973,7 @@ async function sendMessage(text) {
       messageId: result.assistant_message_id,
       createdAt: result.assistant_created_at,
     });
+    reportDisplayed();
   }
   for (const message of result?.messages || []) {
     if (message?.role === "assistant") {
@@ -1962,6 +1983,7 @@ async function sendMessage(text) {
         messageId: message.message_id || message.id,
         createdAt: message.created_at || message.timestamp,
       });
+      reportDisplayed(message);
     }
   }
 }

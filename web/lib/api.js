@@ -83,6 +83,19 @@ export class WatchApiClient {
     return this.request("PUT", `sessions/${encodeURIComponent(sessionId)}/playback`, { body: snapshot });
   }
 
+  reportReplyDisplayed(sessionId, jobId, visibleLatencyMs) {
+    return this.request(
+      "POST",
+      `sessions/${encodeURIComponent(sessionId)}/reply-displayed`,
+      {
+        body: {
+          job_id: String(jobId || ""),
+          visible_latency_ms: Math.max(0, Math.round(Number(visibleLatencyMs) || 0)),
+        },
+      },
+    );
+  }
+
   updateMode(sessionId, mode) {
     return this.request("PUT", `sessions/${encodeURIComponent(sessionId)}/mode`, { body: { mode } });
   }

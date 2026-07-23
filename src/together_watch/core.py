@@ -18,12 +18,14 @@ from .models import (
     PlaybackSnapshot,
     PlotChunk,
     RiskEvent,
+    ReplyLatencyProfile,
     SessionMode,
     SnapshotApplyResult,
     WatchSession,
 )
 from .recall import Bm25PlotRecall
 from .timeline import (
+    ReplyLatencyTracker,
     TimelineTracker,
     advance_through_cached_intervals,
     cached_interval_at,
@@ -49,6 +51,7 @@ class _RetainedAnalysis:
 class WatchCore:
     def __init__(self, *, recall: PlotRecallAdapter | None = None) -> None:
         self._recall = recall or Bm25PlotRecall()
+        self._reply_latencies = ReplyLatencyTracker()
         self._sessions: dict[str, WatchSession] = {}
         self._timelines: dict[str, TimelineTracker] = {}
         self._chunks: dict[str, list[PlotChunk]] = {}
@@ -364,6 +367,7 @@ class WatchCore:
         ]
         watched = [chunk for chunk in active_chunks if chunk.end_ms <= snapshot.playhead_ms]
         related = self._recall.recall(recent_user_messages, watched)
+        reply_latency = self._reply_latencies.profile(session_id)
         return build_context_envelope(
             session_id=session_id,
             snapshot=snapshot,
@@ -371,7 +375,28 @@ class WatchCore:
             chunks=active_chunks,
             related_watched_chunks=related,
             story_background=story_background,
+            reply_latency=reply_latency,
         )
+
+    def record_reply_latency(
+        self,
+        session_id: str,
+        *,
+        job_id: str,
+        latency_ms: int,
+        source: str = "gateway_first_visible",
+    ) -> ReplyLatencyProfile:
+        self.get_session(session_id)
+        return self._reply_latencies.record(
+            session_id=session_id,
+            job_id=job_id,
+            latency_ms=latency_ms,
+            source=source,
+        )
+
+    def reply_latency_profile(self, session_id: str) -> ReplyLatencyProfile:
+        self.get_session(session_id)
+        return self._reply_latencies.profile(session_id)
 
     def upcoming_risks(self, session_id: str) -> tuple[RiskEvent, ...]:
         session = self.get_session(session_id)

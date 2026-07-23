@@ -4,6 +4,7 @@ import unittest
 
 from together_watch import (
     PlaybackSnapshot,
+    ReplyLatencyTracker,
     TimelineTracker,
     advance_through_cached_intervals,
     cached_interval_at,
@@ -107,6 +108,32 @@ class ReplyArrivalWindowTest(unittest.TestCase):
         )
 
         self.assertEqual(result, 600_000)
+
+
+class ReplyLatencyTrackerTest(unittest.TestCase):
+    def test_client_display_replaces_gateway_sample_for_the_same_job(self) -> None:
+        tracker = ReplyLatencyTracker()
+        tracker.record(
+            session_id="watch-1",
+            job_id="job-1",
+            latency_ms=8_000,
+        )
+        tracker.record(
+            session_id="watch-1",
+            job_id="job-2",
+            latency_ms=12_000,
+        )
+
+        profile = tracker.record(
+            session_id="watch-1",
+            job_id="job-1",
+            latency_ms=10_000,
+            source="client_displayed",
+        )
+
+        self.assertEqual(profile.sample_count, 2)
+        self.assertEqual(profile.average_latency_ms, 11_000)
+        self.assertEqual(profile.latest_source, "client_displayed")
 
 
 if __name__ == "__main__":

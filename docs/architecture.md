@@ -77,6 +77,7 @@ share the same evidence and spoiler boundaries without inheriting private produc
 | `PlotRecallAdapter` | Retrieve related chunks from the active session and watched range only. |
 | `ContextHostAdapter` | Convert a context envelope into the host model's request format. |
 | `ActionTransport` | Deliver validated timed actions to the correct client session. |
+| `ReplyLatencyStore` | Persist one replaceable first-visible latency sample per chat job. |
 | `RuntimeStore` | Persist sessions, leases, jobs, plans, chunks, risks, viewings, tickets, and idempotency records. |
 
 ### Network Source Sampling
@@ -297,8 +298,15 @@ The host builds separate context regions:
 - `scheduled_future_chunks`: later material usable only for timed actions.
 
 Visible replies stop at `reply_arrival_until_ms`. Scheduled-future material never enters visible
-reply context. The default reply lead is 30 seconds, is adjusted by playback rate, and cannot exceed
-two media minutes.
+reply context. The configured reply lead is the initial fallback. After replies have been observed,
+the current session's average first-visible latency replaces that fallback, is adjusted by playback
+rate, and cannot expose more than two media minutes. Store one sample per chat job; a client-displayed
+sample replaces the gateway first-visible estimate for that same job instead of adding a duplicate.
+
+Visual context uses the same envelope. The portable selector chooses at most four deduplicated frames
+for current plot, the top recalled plot, expected-arrival plot, and the reply-arrival boundary. It
+rejects frames from another session, media, epoch, or beyond the visible boundary. Image composition,
+storage, and model transport remain host responsibilities.
 
 Recall candidates are scoped to the active session, current media, current epoch, cached plot chunks,
 and already watched range. They are not long-term memory or global chat-history search.

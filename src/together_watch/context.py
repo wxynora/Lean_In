@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from .models import ContextEnvelope, KnowledgeMode, PlaybackSnapshot, PlotChunk, SessionMode
+from .models import (
+    ContextEnvelope,
+    KnowledgeMode,
+    PlaybackSnapshot,
+    PlotChunk,
+    ReplyLatencyProfile,
+    SessionMode,
+)
 from .timeline import reply_arrival_until_ms, scheduled_future_until_ms
 
 
@@ -21,6 +28,7 @@ def build_context_envelope(
     chunks: Sequence[PlotChunk],
     related_watched_chunks: Sequence[PlotChunk] = (),
     story_background: str = "",
+    reply_latency: ReplyLatencyProfile | None = None,
 ) -> ContextEnvelope:
     active_chunks = [
         chunk
@@ -29,7 +37,10 @@ def build_context_envelope(
         and chunk.timeline_epoch == snapshot.timeline_epoch
     ]
     playhead_ms = snapshot.playhead_ms
-    arrival_until_ms = reply_arrival_until_ms(snapshot, mode.reply_lead_ms)
+    effective_reply_lead_ms = mode.reply_lead_ms
+    if reply_latency is not None and reply_latency.sample_count > 0:
+        effective_reply_lead_ms = reply_latency.average_latency_ms
+    arrival_until_ms = reply_arrival_until_ms(snapshot, effective_reply_lead_ms)
     future_until_ms = scheduled_future_until_ms(snapshot)
     current_start_ms = max(0, playhead_ms - CURRENT_LOOKBACK_MS)
 
@@ -81,4 +92,7 @@ def build_context_envelope(
         current_chunks=_ordered(current),
         reply_arrival_chunks=_ordered(reply_arrival),
         scheduled_future_chunks=_ordered(scheduled_future),
+        timeline_epoch=snapshot.timeline_epoch,
+        visual_related_chunk_id=(safe_related[0].chunk_id if safe_related else ""),
+        reply_latency=reply_latency,
     )

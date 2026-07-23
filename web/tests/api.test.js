@@ -45,6 +45,31 @@ test("gateway client exposes structured API failures", async () => {
   );
 });
 
+test("gateway client reports the first displayed assistant latency", async () => {
+  const calls = [];
+  const client = new WatchApiClient(
+    { gatewayBaseUrl: "https://gateway.example" },
+    async (url, options) => {
+      calls.push({ url: String(url), options });
+      return new Response(JSON.stringify({ ok: true }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    },
+  );
+
+  await client.reportReplyDisplayed("watch-1", "job-1", 12_345.6);
+
+  assert.equal(
+    calls[0].url,
+    "https://gateway.example/miniapp-api/watch/sessions/watch-1/reply-displayed",
+  );
+  assert.deepEqual(JSON.parse(calls[0].options.body), {
+    job_id: "job-1",
+    visible_latency_ms: 12_346,
+  });
+});
+
 test("explicit viewing actions are distinct from internal session cleanup", async () => {
   const calls = [];
   const client = new WatchApiClient(

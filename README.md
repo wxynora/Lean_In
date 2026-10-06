@@ -256,7 +256,7 @@ Change it with `watchApiBasePath` in `web/config.js`.
 | `GET` | `/sessions` | List active/recent sessions for a window. |
 | `POST` | `/sessions` | Idempotently create a session after media capability detection. |
 | `GET` | `/sessions/{id}/status` | Read preparation, playback, analysis, sample plan, risks, and start gate. |
-| `GET` | `/viewings?status=resumable` | List saved viewing progress for Recent Watch. |
+| `GET` | `/viewings?status=resumable` | List automatic checkpoints and explicitly saved progress for Recent Watch. |
 | `GET` | `/viewings/{id}` | Restore one cross-part viewing summary and its stable ticket. |
 | `GET` / `POST` | `/viewings/{id}/ticket-frame-captures` | List or save user-confirmed ticket screenshots. |
 | `GET` | `/viewings/{id}/ticket-frame-captures/{capture_id}/image` | Read one authenticated persistent screenshot. |

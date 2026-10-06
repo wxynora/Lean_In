@@ -218,7 +218,6 @@ class ViewingLedger:
                 media=media,
                 source_reference=source_reference.strip(),
             )
-            state.progress = None
             return self._summary(state)
 
     def unlock_session(self, session_id: str) -> ViewingSummary:
@@ -300,6 +299,9 @@ class ViewingLedger:
                 state,
                 completed_at=now_iso,
                 last_session_id=session_id,
+            )
+            state.progress = (
+                None if state.completed_at else self._playback_progress(state, session, now_iso=now_iso)
             )
             return ViewingUpdateResult(
                 played_delta_ms=played_delta_ms,

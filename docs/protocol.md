@@ -164,18 +164,26 @@ Session creation does not unlock playback.
 Use this only for active session recovery. Hosts must not return ended or lease-expired sessions as
 actively synchronized.
 
-## List Saved Progress
+## List Resumable Progress
 
 `GET /viewings?window_id=<id>&status=resumable`
 
-This returns saved `viewing_progress` records for Recent Watch. It is separate from active-session
-recovery and from the completed ticket shelf. A saved record keeps its `viewing_id`, selected part,
-authoritative playhead, trusted played duration, analysis coverage, and any explicitly selected
-ticket-back frame.
+This returns `viewing_progress` records from accepted playback snapshots and explicit saves for
+Recent Watch. It is separate from active-session recovery and the completed ticket shelf. Each
+accepted snapshot updates the viewing's part and authoritative playhead even while its session is
+active. Technical cleanup preserves that checkpoint; registering a replacement session keeps it
+until a new accepted snapshot advances it. New session snapshot sequences remain independent.
+
+Automatic checkpoints report `analysis_retained=false` and zero retained coverage: they do not
+retain analysis or extend session leases or cache TTLs. Persistent hosts must durably store the
+checkpoint before purging a temporary session; the Python ledger is an in-memory reference, not a
+persistent database. Explicitly saved records also preserve retained analysis coverage and any
+selected ticket-back frame.
 
 To resume, create a new session with the saved `viewing_id` and the same `work_key` and part identity.
-The host reattaches the retained plot chunks, risks, knowledge card, and subtitle reference to that
-new session. Raw audio, raw frames, and contact sheets are not retained for resume. A local-file
+If `analysis_retained=true`, the host reattaches the retained plot chunks, risks, knowledge card,
+and subtitle reference to that new session. Otherwise it uses its existing analysis preparation.
+Raw audio, raw frames, and contact sheets are not retained for resume. A local-file
 client must reselect the file and prove the same `media_revision`; the host must reject a replacement
 file rather than reuse the old analysis.
 
@@ -586,7 +594,7 @@ Technical cleanup, saving progress, and completing a viewing are three different
 
 | Request | Meaning |
 | --- | --- |
-| `DELETE /sessions/{id}` | Technical cleanup for part switching, `pagehide`, or abandonment. It creates neither saved progress nor a ticket. |
+| `DELETE /sessions/{id}` | Technical cleanup for part switching, `pagehide`, or abandonment. It preserves the last accepted playback checkpoint, without explicitly retaining analysis or creating a ticket. |
 | `DELETE /sessions/{id}?viewing_action=save_progress` | Close the session, retain resumable plot analysis and the authoritative playback point, and create no ticket. |
 | `DELETE /sessions/{id}?viewing_action=complete` | Clear resumable progress and create or return one stable ticket. |
 
@@ -648,7 +656,7 @@ separately reports whether every required part reached its normal-content bounda
 
 Recommended host routes:
 
-- `GET /viewings?status=resumable&window_id=...` returns saved progress ordered newest first;
+- `GET /viewings?status=resumable&window_id=...` returns automatic checkpoints and explicitly saved progress ordered newest first;
 - `GET /viewings/{viewing_id}` returns `viewing_summary` for recovery;
 - `POST/GET /viewings/{viewing_id}/ticket-frame-captures` saves or lists user-confirmed JPEG
   captures from every part of the viewing;
@@ -664,8 +672,9 @@ Recommended host routes:
 - `viewing_action=complete` creates the stable ticket even when
   `viewing_summary.completed=false`.
 
-Saved progress and completed-viewing retention are intentionally different. Saved progress retains
-the committed plot analysis needed to resume; it is not converted into a completed-analysis TTL.
+Explicitly saved progress and completed-viewing retention are intentionally different. An explicit
+save retains the committed plot analysis needed to resume; it is not converted into a
+completed-analysis TTL.
 When `viewing_action=complete` is accepted, resumable progress is removed and committed plot analysis
 enters the host's completed-analysis TTL. The reference default is 24 hours
 (`86400` seconds), configurable through `ViewingLedger(completed_analysis_ttl_seconds=...)` or an

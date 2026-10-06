@@ -308,6 +308,43 @@ class ViewingLedger:
                 summary=self._summary(state),
             )
 
+    @staticmethod
+    def _playback_progress(
+        state: _ViewingState,
+        session: _SessionState,
+        *,
+        now_iso: str,
+        retained_until_ms: int | None = None,
+    ) -> ViewingProgress:
+        snapshot = session.previous_snapshot
+        media = session.media
+        return ViewingProgress(
+            viewing_id=state.viewing_id,
+            work_key=state.work_key,
+            title=state.title,
+            cover_url=state.cover_url,
+            source=media.source,
+            source_reference=session.source_reference,
+            media_id=media.media_id,
+            part_key=media.part_key,
+            part_index=media.part_index,
+            part_count=media.part_count,
+            part_title=media.part_title,
+            playhead_ms=snapshot.playhead_ms if snapshot else 0,
+            duration_ms=media.duration_ms,
+            played_duration_ms=sum(
+                part.played_duration_ms for part in state.parts.values()
+            ),
+            saved_at=now_iso,
+            analysis_covered_until_ms=(
+                retained_until_ms
+                if retained_until_ms is not None
+                else 0
+            ),
+            analysis_retained=retained_until_ms is not None,
+            ticket_back_frame=state.ticket_back_frame,
+        )
+
     def end_session(
         self,
         session_id: str,
@@ -347,33 +384,8 @@ class ViewingLedger:
             session.ended = True
             state.updated_at = now_iso
             if resolved_action == ViewingExitAction.SAVE_PROGRESS:
-                snapshot = session.previous_snapshot
-                media = session.media
-                state.progress = ViewingProgress(
-                    viewing_id=state.viewing_id,
-                    work_key=state.work_key,
-                    title=state.title,
-                    cover_url=state.cover_url,
-                    source=media.source,
-                    source_reference=session.source_reference,
-                    media_id=media.media_id,
-                    part_key=media.part_key,
-                    part_index=media.part_index,
-                    part_count=media.part_count,
-                    part_title=media.part_title,
-                    playhead_ms=snapshot.playhead_ms if snapshot else 0,
-                    duration_ms=media.duration_ms,
-                    played_duration_ms=sum(
-                        part.played_duration_ms for part in state.parts.values()
-                    ),
-                    saved_at=now_iso,
-                    analysis_covered_until_ms=(
-                        retained_until_ms
-                        if retained_until_ms is not None
-                        else 0
-                    ),
-                    analysis_retained=retained_until_ms is not None,
-                    ticket_back_frame=state.ticket_back_frame,
+                state.progress = self._playback_progress(
+                    state, session, now_iso=now_iso, retained_until_ms=retained_until_ms,
                 )
             elif resolved_action == ViewingExitAction.COMPLETE:
                 state.progress = None
